@@ -1,0 +1,30 @@
+name: Front Deployment
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  build:
+    name: react build & deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout Github Action
+        uses: actions/checkout@v3
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        run: |
+          echo "::set-output name=dir::$(npm config get cache)"
+      - uses: actions/cache@v3
+        id: npm-cache
+        with:
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: install npm dependencies
+        run: npm install
+      - name: react build
+        run: npm run build

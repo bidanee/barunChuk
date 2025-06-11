@@ -1,0 +1,43 @@
+name: NodeJS Server Deploy
+run-name: ${{ github.workflow }}
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.1"
+
+      - name: Install Dependencies
+        run: |
+          cd backend/sersver
+          npm install 
+          npm install pm2 -g
+
+      - name: Run App with PM2
+        run: |
+          cd backend/server 
+          pm2 start app.js --name "deploy-app"
+          pm2 save
+
+      - name: Stop App with PM2
+        run: |
+          pm2 list
+          pm2 stop "hello-app"
+          pm2 delete "hello-app"
+
+      # - name: Keep PM2 Alive
+      #   run: |
+      #     pm2 list
+      #     sleep infinity

@@ -25,10 +25,10 @@ module.exports = {
       template: './public/index.html'
     })
   ],
-  devServer: {
-    static: './dist',
-    port: 3000,
-    open: true
+    devServer: {
+      static: path.join(__dirname, 'public'), 
+      open: true,
   },
+
   mode: 'development'
 };
