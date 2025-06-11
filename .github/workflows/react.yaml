@@ -1,9 +1,6 @@
 name: Front Deployment
 
-on:
-  push:
-    branches:
-      - develop
+on: [push]
 
 jobs:
   build:
@@ -13,10 +10,12 @@ jobs:
     steps:
       - name: checkout Github Action
         uses: actions/checkout@v3
+
       - name: Get npm cache directory
         id: npm-cache-dir
         run: |
-          echo "::set-output name=dir::$(npm config get cache)"
+          echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+
       - uses: actions/cache@v3
         id: npm-cache
         with:
@@ -24,7 +23,9 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
       - name: install npm dependencies
         run: npm install
+
       - name: react build
         run: npm run build

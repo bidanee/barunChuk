@@ -21,7 +21,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          cd backend/sersver
+          cd backend/server
           npm install 
           npm install pm2 -g
 
@@ -34,8 +34,8 @@ jobs:
       - name: Stop App with PM2
         run: |
           pm2 list
-          pm2 stop "hello-app"
-          pm2 delete "hello-app"
+          pm2 stop "deploy-app"
+          pm2 delete "deploy-app"
 
       # - name: Keep PM2 Alive
       #   run: |
