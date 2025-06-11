@@ -25,7 +25,11 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: install npm dependencies
-        run: npm install
+        run: |
+          cd frontend
+          npm install
 
       - name: react build
-        run: npm run build
+        run: |
+          cd frontend
+          npm run build
