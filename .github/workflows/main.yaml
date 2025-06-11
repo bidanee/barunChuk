@@ -1,11 +1,12 @@
 name: remote ssh command
 on: [push]
+
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: executing remote ssh commands using password using ssh-actions
+      - name: executing remote ssh commands using ssh-action
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST }}
@@ -13,4 +14,6 @@ jobs:
           key: ${{ secrets.KEY }}
           port: ${{ secrets.PORT }}
           script: |
+            cd $HOME/barunChuk/sh
+            chmod +x deploy.sh
             ./deploy.sh
