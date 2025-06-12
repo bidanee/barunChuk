@@ -1,0 +1,26 @@
+version: "3.3"
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - barunchuk
+
+  backend-node:
+    build: ./backend/server
+    ports:
+      - "5000:5000"
+    networks:
+      - barunchuk
+
+  backend-python:
+    build: ./backend/fastapi
+    ports:
+      - "8000:8000"
+    networks:
+      - barunchuk
+
+networks:
+  barunchuk:
+    driver: bridge
