@@ -1,5 +1,4 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-// react-webcam 라이브러리 대신 네이티브 비디오 요소를 사용하기 위해 제거
 import {
   PoseLandmarker,
   FilesetResolver,
@@ -16,8 +15,8 @@ const WebcamComponent = () => {
   const [webcamRunning, setWebcamRunning] = useState(false); // 예측 활성화 여부 제어
   const [modelLoading, setModelLoading] = useState(true); // MediaPipe 모델 로딩 중인지 여부 표시
   const [error, setError] = useState(null); // 모델 로딩 또는 웹캠 접근 중 발생한 오류 저장
-  const [postureAdvice, setPostureAdvice] = useState("AI 모델을 로드 중입니다..."); // 거북목 자세 감지 메시지
-  const [isTurtleNeck, setIsTurtleNeck] = useState(false); // 거북목 자세 감지 여부
+  const [postureAdvice, setPostureAdvice] = useState("AI 모델을 로드 중입니다..."); // 자세 감지 메시지
+  const [isBadPosture, setIsBadPosture] = useState(false); // 나쁜 자세 감지 여부
   const [initialPostureLandmarks, setInitialPostureLandmarks] = useState(null); // 기준 자세 랜드마크 저장
   const captureReferenceFlag = useRef(false); // 기준 자세 캡처를 위한 플래그
 
@@ -30,6 +29,21 @@ const WebcamComponent = () => {
   // 비디오 및 캔버스 치수를 위한 상수
   const videoWidth = 640;
   const videoHeight = 480;
+
+  // ===== 자세 교정 관련 상수 및 임계값 설정 =====
+  // 이 값들은 사용 환경과 개인에게 맞춰 조절해야 합니다.
+  // 픽셀 또는 비디오 높이/너비 대비 비율로 설정됩니다.
+
+  // 거북목 감지 임계값 (귀-어깨 Y축 상대 거리 변화)
+  // 기준 자세 대비 귀가 어깨보다 일정 픽셀 이상 앞으로 나갔을 때 (Y축 값이 낮아짐)
+  const TURTLE_NECK_Y_THRESHOLD_RATIO = 0.04; // 비디오 높이의 4% (예: 480 * 0.04 = 약 19px)
+  // 귀-어깨 X축 상대 거리 변화 (추가적인 거북목 판단 보조)
+  const TURTLE_NECK_X_THRESHOLD_RATIO = 0.05; // 비디오 너비의 5% (예: 640 * 0.05 = 약 32px)
+
+  // 구부정한 등 (어깨 처짐) 감지 임계값 (어깨 Y축 절대 위치 변화)
+  // 기준 자세 대비 어깨가 일정 픽셀 이상 아래로 처졌을 때 (Y축 값이 높아짐)
+  const SLOUCHING_SHOULDER_Y_THRESHOLD_RATIO = 0.05; // 비디오 높이의 5% (예: 480 * 0.05 = 약 24px)
+  // ===========================================
 
   // 컴포넌트가 마운트될 때 Pose Landmarker 모델을 로드하기 위한 useEffect 훅
   useEffect(() => {
@@ -47,9 +61,8 @@ const WebcamComponent = () => {
         // 지정된 옵션으로 PoseLandmarker 인스턴스 생성
         const landmarker = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: {
-            // 포즈 랜드마커 모델 파일의 공개 CDN URL
-            modelAssetPath:
-              "/pose_landmarker_full.task",
+            // 포즈 랜드마커 모델 파일의 공개 CDN URL (정적 파일을 제공하는 경로에 있어야 함)
+            modelAssetPath: "/pose_landmarker_full.task",
           },
           runningMode: runningModeRef.current, // 실행 모드를 VIDEO로 설정
           numPoses: 1, // 최대 1개의 포즈 감지
@@ -140,122 +153,157 @@ const WebcamComponent = () => {
   // 비디오 'onplay' 이벤트를 처리하는 함수
   const handleVideoOnPlay = useCallback(() => {
     if (webcamRunning && !modelLoading && !error) {
-      predictWebcam(); // 비디오가 재생되기 시작하고 조건이 충족될 때만 예측 루프 시작
+      requestAnimationFrame(predictWebcam);
     }
-  }, [webcamRunning, modelLoading, error, predictWebcam]);
+  }, [webcamRunning, modelLoading, error]);
 
-
-  // 불필요한 재 생성을 방지하기 위한 웹캠 예측 루프의 useCallback 훅
+  // 웹캠 예측 루프 (자세 감지 및 분석의 핵심)
   const predictWebcam = useCallback(async () => {
-    const video = webcamRef.current; // HTML 비디오 요소 가져오기
-    const canvas = canvasRef.current; // 캔버스 요소 가져오기
-    const ctx = canvas?.getContext("2d"); // 캔버스의 2D 렌더링 컨텍스트 가져오기
+    const video = webcamRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
 
-    // 필요한 모든 요소와 인스턴스가 사용 가능하고 준비되었는지 확인
     if (
       !video ||
       !ctx ||
-      video.readyState < 2 || // 비디오 스트림이 준비되었는지 확인
+      video.readyState < 2 ||
       !poseLandmarkerRef.current ||
       !drawingUtilsRef.current
     ) {
       if (webcamRunning) {
-        // 웹캠이 실행되어야 하지만 준비되지 않은 경우, 다음 애니메이션 프레임에서 재시도
-        requestAnimationFrame(predictWebcam); // 조건이 충족되지 않아도 웹캠이 실행 중이면 계속 시도
+        requestAnimationFrame(predictWebcam);
       }
       return;
     }
 
-    // 캔버스 치수를 비디오 피드와 일치하도록 설정
     canvas.width = videoWidth;
     canvas.height = videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // 캔버스에 비디오 프레임 그리기
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // 웹캠 영상을 먼저 그림
-
-    // MediaPipe의 비디오 추론 API를 위한 현재 시간 가져오기
     const now = performance.now();
 
-    // 비디오 프레임이 변경된 경우에만 감지 수행
     if (lastVideoTimeRef.current !== video.currentTime) {
       lastVideoTimeRef.current = video.currentTime;
 
       poseLandmarkerRef.current.detectForVideo(video, now, (result) => {
-        // 랜드마크가 감지되면 거북목 자세 확인 로직 실행
         if (result.landmarks && result.landmarks.length > 0) {
-            const currentLandmarks = result.landmarks[0]; // 현재 감지된 사람의 랜드마크 사용
+            const currentLandmarks = result.landmarks[0];
 
-            // 기준 자세 캡처 플래그가 true이면 현재 랜드마크를 저장
             if (captureReferenceFlag.current) {
                 setInitialPostureLandmarks(currentLandmarks);
                 setPostureAdvice("기준 자세가 설정되었습니다! 이제 자세를 분석합니다.");
-                captureReferenceFlag.current = false; // 플래그 초기화
+                captureReferenceFlag.current = false;
             }
 
-            // 거북목 감지에 필요한 랜드마크 인덱스 (MediaPipe Pose 모델 기준)
-            // 출처: https://developers.google.com/mediapipe/solutions/vision/pose_landmarker
+            // MediaPipe Pose 랜드마크 인덱스 (주요 랜드마크)
             const NOSE = 0;
             const LEFT_EAR = 7;
             const RIGHT_EAR = 8;
             const LEFT_SHOULDER = 11;
             const RIGHT_SHOULDER = 12;
+            const LEFT_HIP = 23;
+            const RIGHT_HIP = 24;
 
             let currentPostureMessage = "";
-            let currentIsTurtleNeck = false;
+            let currentIsBadPosture = false;
             let drawColor = 'green'; // 기본 그리기 색상
 
-            // 모든 필요한 랜드마크가 현재 감지되었는지 확인
+            // 모든 필수 랜드마크가 감지되었는지 확인
             if (currentLandmarks[LEFT_EAR] && currentLandmarks[RIGHT_EAR] &&
                 currentLandmarks[LEFT_SHOULDER] && currentLandmarks[RIGHT_SHOULDER] &&
-                currentLandmarks[NOSE]) {
+                currentLandmarks[NOSE] &&
+                currentLandmarks[LEFT_HIP] && currentLandmarks[RIGHT_HIP]) {
 
                 const leftEar = currentLandmarks[LEFT_EAR];
                 const rightEar = currentLandmarks[RIGHT_EAR];
                 const leftShoulder = currentLandmarks[LEFT_SHOULDER];
                 const rightShoulder = currentLandmarks[RIGHT_SHOULDER];
                 const nose = currentLandmarks[NOSE];
+                const leftHip = currentLandmarks[LEFT_HIP];
+                const rightHip = currentLandmarks[RIGHT_HIP];
 
-                // 어깨 너비를 기준으로 동적 임계값 설정
-                // 이 값을 조정하여 감지 민감도 조절 가능.
-                // 기준 자세와의 X-축 편차 임계값으로 어깨 너비의 약 5%~10% 사용
-                const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
-                const postureThreshold = shoulderWidth * 0.07; // 7%로 조정, 필요에 따라 조절
 
-                // 기준 자세 랜드마크가 설정되었는지 확인
                 if (initialPostureLandmarks) {
                     const initialLeftEar = initialPostureLandmarks[LEFT_EAR];
                     const initialRightEar = initialPostureLandmarks[RIGHT_EAR];
                     const initialLeftShoulder = initialPostureLandmarks[LEFT_SHOULDER];
                     const initialRightShoulder = initialPostureLandmarks[RIGHT_SHOULDER];
+                    const initialLeftHip = initialPostureLandmarks[LEFT_HIP];
+                    const initialRightHip = initialPostureLandmarks[RIGHT_HIP];
 
-                    // 기준 자세의 랜드마크도 유효한지 확인
-                    if (initialLeftEar && initialRightEar && initialLeftShoulder && initialRightShoulder) {
-                        // 기준 자세에서의 귀와 어깨 X축 상대 위치 편차
-                        const initialLeftDeviation = initialLeftEar.x - initialLeftShoulder.x;
-                        const initialRightDeviation = initialRightEar.x - initialRightShoulder.x;
+                    if (initialLeftEar && initialRightEar && initialLeftShoulder && initialRightShoulder && initialLeftHip && initialRightHip) {
 
-                        // 현재 자세에서의 귀와 어깨 X축 상대 위치 편차
-                        const currentLeftDeviation = leftEar.x - leftShoulder.x;
-                        const currentRightDeviation = rightEar.x - rightShoulder.x;
+                        // =========================================================
+                        // 1. 거북목 감지 로직 (귀-어깨 Y축, X축 상대 위치 변화 복합 사용)
+                        // =========================================================
+                        const initialAvgEarY = (initialLeftEar.y + initialRightEar.y) / 2;
+                        const initialAvgShoulderY = (initialLeftShoulder.y + initialRightShoulder.y) / 2;
+                        const initialEarShoulderDiffY = initialAvgEarY - initialAvgShoulderY; // 기준: 귀-어깨 Y차이
 
-                        // 기준 자세 대비 현재 자세의 X축 편차 변화량
-                        // 이 값이 양수이면 귀가 어깨 대비 바깥쪽(화면 좌/우 끝)으로, 음수이면 안쪽으로 이동
-                        const diffLeft = currentLeftDeviation - initialLeftDeviation;
-                        const diffRight = currentRightDeviation - initialRightDeviation;
+                        const currentAvgEarY = (leftEar.y + rightEar.y) / 2;
+                        const currentAvgShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+                        const currentEarShoulderDiffY = currentAvgEarY - currentAvgShoulderY;
 
-                        // 거북목 자세 판단 로직 (여기서는 X축 편차의 변화량을 사용)
-                        // 미러링된 웹캠에서 머리가 앞으로 나올 때, 귀가 어깨에 비해 X축 상에서
-                        // 더 왼쪽(x값 감소)으로 이동하거나 더 오른쪽(x값 증가)으로 이동하는 현상을 감지.
-                        // 이 변화량의 절대값이 임계값을 초과하면 거북목으로 판단.
-                        if (Math.abs(diffLeft) > postureThreshold || Math.abs(diffRight) > postureThreshold) {
-                            currentPostureMessage = "거북목 자세가 감지됩니다! 바른 자세를 취해주세요.";
-                            currentIsTurtleNeck = true;
+                        // Y축 변화: 귀가 어깨 대비 더 아래로 내려왔을 때 (즉, 머리가 앞으로 숙여졌을 때)
+                        // 양수 값 => 귀가 어깨보다 Y값이 커짐 (아래로 내려감) = 머리가 앞으로 숙여짐
+                        const diffEarShoulderY = currentEarShoulderDiffY - initialEarShoulderDiffY;
+
+                        // X축 변화: 귀가 어깨 대비 X축 상에서 더 앞으로 나갔을 때
+                        // (미러링 웹캠 환경에서는 X값이 왼쪽/오른쪽으로 더 멀어지는 경향)
+                        const initialAvgEarX = (initialLeftEar.x + initialRightEar.x) / 2;
+                        const initialAvgShoulderX = (initialLeftShoulder.x + initialRightShoulder.x) / 2;
+                        const initialEarShoulderDiffX = initialAvgEarX - initialAvgShoulderX;
+
+                        const currentAvgEarX = (leftEar.x + rightEar.x) / 2;
+                        const currentAvgShoulderX = (leftShoulder.x + rightShoulder.x) / 2;
+                        const currentEarShoulderDiffX = currentAvgEarX - currentAvgShoulderX;
+
+                        // 양수 또는 음수 => 기준 대비 X축 방향으로 변화
+                        const diffEarShoulderX = currentEarShoulderDiffX - initialEarShoulderDiffX;
+
+
+                        let isTurtleNeckDetected = false;
+                        if (diffEarShoulderY > (videoHeight * TURTLE_NECK_Y_THRESHOLD_RATIO) ||
+                            Math.abs(diffEarShoulderX) > (videoWidth * TURTLE_NECK_X_THRESHOLD_RATIO)) {
+                            // Y축으로 숙여지거나 (주요 판단), X축으로 과도하게 앞으로 나갔을 때 (보조 판단)
+                            isTurtleNeckDetected = true;
+                        }
+
+                        // =========================================================
+                        // 2. 구부정한 등 감지 로직 (어깨 Y축 변화)
+                        // =========================================================
+                        const initialAvgShoulderYAbs = (initialLeftShoulder.y + initialRightShoulder.y) / 2;
+                        const currentAvgShoulderYAbs = (leftShoulder.y + rightShoulder.y) / 2;
+
+                        // 어깨가 기준 자세 대비 아래로 처졌을 때 (Y축 값이 커짐)
+                        const diffShoulderYAbs = currentAvgShoulderYAbs - initialAvgShoulderYAbs;
+
+                        let isSlouchingDetected = false;
+                        if (diffShoulderYAbs > (videoHeight * SLOUCHING_SHOULDER_Y_THRESHOLD_RATIO)) {
+                            isSlouchingDetected = true;
+                        }
+
+                        // =========================================================
+                        // 종합적인 자세 판단 및 피드백
+                        // =========================================================
+                        if (isTurtleNeckDetected && isSlouchingDetected) {
+                            currentPostureMessage = "거북목과 등이 구부정합니다! 바른 자세를 취해주세요.";
+                            currentIsBadPosture = true;
                             drawColor = 'red';
+                        } else if (isTurtleNeckDetected) {
+                            currentPostureMessage = "거북목 자세가 감지됩니다! 고개를 뒤로 당겨주세요.";
+                            currentIsBadPosture = true;
+                            drawColor = 'orange'; // 거북목만 감지 시 주황색
+                        } else if (isSlouchingDetected) {
+                            currentPostureMessage = "등이 구부정합니다! 어깨를 펴고 앉아주세요.";
+                            currentIsBadPosture = true;
+                            drawColor = 'orange'; // 구부정한 등만 감지 시 주황색
                         } else {
-                            currentPostureMessage = "좋은 자세를 유지하고 있습니다.";
-                            currentIsTurtleNeck = false;
+                            currentPostureMessage = "좋은 자세를 유지하고 있습니다. 계속 유지해주세요!";
+                            currentIsBadPosture = false;
                             drawColor = 'green';
                         }
+
                     } else {
                         currentPostureMessage = "기준 자세의 모든 랜드마크를 감지할 수 없습니다. 다시 설정해주세요.";
                     }
@@ -263,36 +311,37 @@ const WebcamComponent = () => {
                     currentPostureMessage = "웹캠에 바른 자세를 취하고 '기준 자세 설정' 버튼을 눌러주세요.";
                 }
             } else {
-                currentPostureMessage = "주요 랜드마크를 감지할 수 없습니다. 더 잘 보이게 조정해주세요.";
+                currentPostureMessage = "주요 랜드마크를 감지할 수 없습니다. 몸 전체가 잘 보이게 조정해주세요.";
             }
             setPostureAdvice(currentPostureMessage);
-            setIsTurtleNeck(currentIsTurtleNeck);
+            setIsBadPosture(currentIsBadPosture); // 상태 변수 이름 변경
 
             // 랜드마크 및 연결선 그리기
-            for (const personLandmarks of result.landmarks) { // 모든 감지된 사람에 대해 그리기
+            for (const personLandmarks of result.landmarks) {
                 drawingUtilsRef.current.drawLandmarks(personLandmarks, {
                     radius: (landmark) => DrawingUtils.lerp(landmark.v, 0, 1, 4, 8),
-                    color: drawColor, // 동적으로 변경된 색상 적용
+                    color: drawColor,
                 });
                 drawingUtilsRef.current.drawConnectors(
                     personLandmarks,
                     PoseLandmarker.POSE_CONNECTIONS,
-                    { color: drawColor } // 동적으로 변경된 색상 적용
+                    { color: drawColor }
                 );
             }
         } else {
-            // 감지된 랜드마크가 없을 경우
             setPostureAdvice("사람을 찾을 수 없습니다.");
-            setIsTurtleNeck(false);
+            setIsBadPosture(false);
         }
       });
     }
 
-    // 웹캠이 여전히 실행 중이면 예측 루프 계속
     if (webcamRunning) {
       requestAnimationFrame(predictWebcam);
     }
-  }, [webcamRunning, initialPostureLandmarks, captureReferenceFlag]); // 의존성 추가: initialPostureLandmarks와 captureReferenceFlag
+  }, [webcamRunning, initialPostureLandmarks, captureReferenceFlag,
+      videoHeight, videoWidth, // 임계값 계산에 사용되므로 의존성에 추가
+      TURTLE_NECK_Y_THRESHOLD_RATIO, TURTLE_NECK_X_THRESHOLD_RATIO, SLOUCHING_SHOULDER_Y_THRESHOLD_RATIO // 임계값 상수도 의존성에 추가
+    ]);
 
   // 웹캠 예측을 켜고 끄는 함수
   const enableCam = () => {
@@ -305,13 +354,12 @@ const WebcamComponent = () => {
       return;
     }
 
-    // 웹캠 실행 상태 토글
     setWebcamRunning((prev) => !prev);
-    // 웹캠이 꺼지면 기준 자세 초기화 및 메시지 변경
-    if(webcamRunning) {
+    if(webcamRunning) { // 웹캠이 꺼질 때
         setInitialPostureLandmarks(null);
         setPostureAdvice("웹캠 비활성화됨");
-    } else {
+        setIsBadPosture(false); // 나쁜 자세 상태 초기화
+    } else { // 웹캠이 켜질 때
         setPostureAdvice("웹캠 활성화됨. 기준 자세 설정 중...");
     }
   };
@@ -322,7 +370,6 @@ const WebcamComponent = () => {
         setPostureAdvice("웹캠과 모델이 준비되어야 기준 자세를 설정할 수 있습니다.");
         return;
     }
-    // 다음 detectForVideo 호출 시 현재 랜드마크를 캡처하도록 플래그 설정
     captureReferenceFlag.current = true;
     setPostureAdvice("기준 자세를 캡처 중...");
   };
@@ -348,7 +395,7 @@ const WebcamComponent = () => {
         textAlign: 'center',
         letterSpacing: 'tight'
       }}>
-        포즈 랜드마커
+        앉은 자세 교정 서비스
       </h1>
 
       {/* 로딩 및 오류 메시지 */}
@@ -386,28 +433,27 @@ const WebcamComponent = () => {
         position: 'relative',
         width: videoWidth,
         height: videoHeight,
-        maxWidth: '640px', // max-w-md (approx)
-        backgroundColor: '#ffffff', // bg-white
-        borderRadius: '12px', // rounded-xl
-        boxShadow: '0 20px 25px -5px rgba(0, 0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)', // shadow-2xl
+        maxWidth: '640px',
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        boxShadow: '0 20px 25px -5px rgba(0, 0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
         overflow: 'hidden',
         transition: 'transform 0.3s ease-in-out',
       }}>
-        {/* 네이티브 비디오 요소 */}
         <video
           ref={webcamRef}
           width={videoWidth}
           height={videoHeight}
-          autoPlay // 비디오 자동 재생
-          playsInline // iOS에서 인라인 재생 허용
-          onPlay={handleVideoOnPlay} /* 비디오가 재생될 때 예측 루프 시작 */
+          autoPlay
+          playsInline
+          onPlay={handleVideoOnPlay}
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
-            width: '100%', // w-full
-            height: '100%', // h-full
-            objectFit: 'cover' // object-cover
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover'
           }}
         />
         <canvas
@@ -416,25 +462,25 @@ const WebcamComponent = () => {
             position: 'absolute',
             top: 0,
             left: 0,
-            width: '100%', // w-full
-            height: '100%', // h-full
-            zIndex: 10 // z-10
+            width: '100%',
+            height: '100%',
+            zIndex: 10
           }}
         />
       </div>
 
       {/* 자세 피드백 메시지 */}
       <div style={{
-        marginTop: '16px', // mt-4
-        marginBottom: '8px', // mb-2
-        padding: '12px', // p-3
-        borderRadius: '8px', // rounded-md
-        textAlign: 'center', // text-center
-        fontWeight: '600', // font-semibold
-        fontSize: '1.125rem', // text-lg
+        marginTop: '16px',
+        marginBottom: '8px',
+        padding: '12px',
+        borderRadius: '8px',
+        textAlign: 'center',
+        fontWeight: '600',
+        fontSize: '1.125rem',
         transition: 'background-color 0.3s, color 0.3s',
-        backgroundColor: isTurtleNeck ? '#fecaca' : '#dcfce7', // bg-red-200 or bg-green-200
-        color: isTurtleNeck ? '#b91c1c' : '#16a34a' // text-red-800 or text-green-800
+        backgroundColor: isBadPosture ? '#fecaca' : '#dcfce7', // 나쁜 자세면 빨간색, 좋으면 초록색
+        color: isBadPosture ? '#b91c1c' : '#16a34a'
       }}>
         {postureAdvice}
       </div>
@@ -442,23 +488,23 @@ const WebcamComponent = () => {
       {/* 제어 버튼 */}
       <button
         onClick={enableCam}
-        disabled={modelLoading || error} // 로딩 중이거나 오류 발생 시 버튼 비활성화
+        disabled={modelLoading || error}
         style={{
-          marginTop: '32px', // mt-8
-          padding: '16px 40px', // px-10 py-4
-          borderRadius: '9999px', // rounded-full
-          color: '#ffffff', // text-white
-          fontWeight: '700', // font-bold
-          fontSize: '1.125rem', // text-lg
-          textTransform: 'uppercase', // uppercase
-          letterSpacing: '0.05em', // tracking-wide
+          marginTop: '32px',
+          padding: '16px 40px',
+          borderRadius: '9999px',
+          color: '#ffffff',
+          fontWeight: '700',
+          fontSize: '1.125rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
           transition: 'all 0.3s ease-in-out',
           border: 'none',
           cursor: (modelLoading || error) ? 'not-allowed' : 'pointer',
           opacity: (modelLoading || error) ? '0.6' : '1',
-          backgroundColor: webcamRunning ? '#ef4444' : '#3b82f6', // 기본 빨간색/파란색
-          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)', // shadow-lg
-          marginBottom: '10px' // 기준 자세 설정 버튼과의 간격
+          backgroundColor: webcamRunning ? '#ef4444' : '#3b82f6',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+          marginBottom: '10px'
         }}
       >
         {modelLoading
@@ -471,7 +517,7 @@ const WebcamComponent = () => {
       {/* 기준 자세 설정 버튼 */}
       <button
         onClick={handleSetReferencePosture}
-        disabled={!webcamRunning || modelLoading || error} // 웹캠이 실행 중이고 모델 로드가 완료되어야 활성화
+        disabled={!webcamRunning || modelLoading || error}
         style={{
           padding: '12px 24px',
           borderRadius: '9999px',
@@ -484,23 +530,22 @@ const WebcamComponent = () => {
           border: 'none',
           cursor: (!webcamRunning || modelLoading || error) ? 'not-allowed' : 'pointer',
           opacity: (!webcamRunning || modelLoading || error) ? '0.6' : '1',
-          backgroundColor: initialPostureLandmarks ? '#6b7280' : '#10b981', // 설정되면 회색, 아니면 녹색
+          backgroundColor: initialPostureLandmarks ? '#6b7280' : '#10b981',
           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         }}
       >
         기준 자세 설정
       </button>
 
-
       <p style={{
-        marginTop: '24px', // mt-6
-        color: '#4b5563', // text-gray-600
-        fontSize: '0.875rem', // text-sm
-        lineHeight: '1.25rem', // leading-5
-        textAlign: 'center', // text-center
-        maxWidth: '448px' // max-w-md (approx)
+        marginTop: '24px',
+        color: '#4b5563',
+        fontSize: '0.875rem',
+        lineHeight: '1.25rem',
+        textAlign: 'center',
+        maxWidth: '448px'
       }}>
-        카메라가 활성화되어 있는지 확인하세요. 이 애플리케이션은 MediaPipe Pose Landmarker를 사용하여 실시간으로 사람의 포즈를 감지하고 시각화합니다. 바른 자세를 취한 후 '기준 자세 설정' 버튼을 눌러주세요.
+        카메라가 활성화되어 있는지 확인하세요. 이 애플리케이션은 MediaPipe Pose Landmarker를 사용하여 실시간으로 앉은 자세를 감지하고 교정 피드백을 제공합니다. 바른 자세를 취한 후 '기준 자세 설정' 버튼을 눌러주세요.
       </p>
     </div>
   );

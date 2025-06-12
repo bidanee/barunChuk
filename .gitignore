@@ -4,3 +4,5 @@ node_modules
 package-lock.json
 .env
 __pycache__
+frontend/dist/**
+frontend/dis/bundle.js
