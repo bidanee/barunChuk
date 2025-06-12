@@ -1,0 +1,85 @@
+# barunChuk/.github/workflows/main.yaml
+name: BarunChuk CI/CD Pipeline # 워크플로우 이름
+
+on:
+  push:
+    branches:
+      - main # main 브랜치에 푸시될 때 워크플로우 실행
+  workflow_dispatch: # GitHub UI에서 수동 실행 허용
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # GitHub Actions 러너 환경
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # 레포지토리 코드 체크아웃
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker BuildX
+        uses: docker/setup-buildx-action@v3
+
+      # --- Frontend (React) Docker 이미지 빌드 및 푸시 ---
+      - name: Build and push Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend # frontend 폴더가 Docker 빌드 컨텍스트
+          file: ./frontend/Dockerfile # frontend/Dockerfile 사용
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-frontend:latest # 이미지 태그
+          platforms: linux/amd64
+
+      # --- Backend Node.js Server Docker 이미지 빌드 및 푸시 ---
+      - name: Build and push Node.js Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend/server # backend/server 폴더가 Docker 빌드 컨텍스트
+          file: ./backend/server/Dockerfile # backend/server/Dockerfile 사용
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-node:latest # 이미지 태그
+          platforms: linux/amd64
+
+      # --- Backend FastAPI (Python) Server Docker 이미지 빌드 및 푸시 ---
+      - name: Build and push FastAPI Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend/fastapi # backend/fastapi 폴더가 Docker 빌드 컨텍스트
+          file: ./backend/fastapi/Dockerfile # backend/fastapi/Dockerfile 사용
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-python:latest # 이미지 태그
+          platforms: linux/amd64
+
+      # --- Deploy to EC2 ---
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.1 # 최신 버전 사용 권장
+        with:
+          host: ${{ secrets.HOST }} # HOST -> HOST (명확성)
+          username: ${{ secrets.USER }} # USERNAME -> USER (명확성)
+          key: ${{ secrets.KEY }} # KEY -> KEY (명확성)
+          port: ${{ secrets.PORT }} # PORT -> PORT (명확성)
+          script: |
+            # EC2 서버에 로그인 후 실행할 명령들
+            # 1. 배포할 프로젝트 디렉토리로 이동
+            #    이 디렉토리에는 배포용 docker-compose.yml 파일이 미리 존재해야 합니다.
+            #    로컬 개발용 docker-compose.yml과 다르게, 볼륨 마운트는 제거해야 합니다.
+            cd /home/${{ secrets.USER }}/barunChuk # EC2의 실제 배포 경로에 맞게 조정
+
+            # 2. Docker Hub 로그인 (EC2에서도 이미지 pull을 위해 필요)
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login --username ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+            # 3. 최신 Docker 이미지들을 Pull
+            #    docker-compose.yml에 정의된 서비스 이름(frontend, backend-node, backend-python, db) 사용
+            docker-compose pull frontend backend-node backend-python db # db는 Docker Hub에서 공식 이미지 pull
+
+            # 4. Docker Compose 서비스 재시작 (새로운 이미지로)
+            docker-compose up -d --remove-orphans
+
+            # 5. 불필요한 Docker 이미지 정리 (디스크 공간 확보)
+            docker image prune -f
+
+            echo "Deployment completed on EC2."
