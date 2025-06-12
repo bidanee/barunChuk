@@ -59,7 +59,7 @@ jobs:
         uses: appleboy/ssh-action@v1.0.1 # 최신 버전 사용 권장
         with:
           host: ${{ secrets.HOST }} # HOST -> HOST (명확성)
-          username: ${{ secrets.USER }} # USERNAME -> USER (명확성)
+          username: ${{ secrets.USERNAME }} # USERNAME -> USER (명확성)
           key: ${{ secrets.KEY }} # KEY -> KEY (명확성)
           port: ${{ secrets.PORT }} # PORT -> PORT (명확성)
           script: |
