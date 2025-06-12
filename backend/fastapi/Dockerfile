@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
 
 # requirements.txt 복사 및 의존성 설치
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt # --no-cache-dir 추가하여 이미지 크기 최적화
+RUN pip install --no-cache-dir -r requirements.txt 
 
 # 모든 소스 코드 복사
 COPY . .
