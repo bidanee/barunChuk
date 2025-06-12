@@ -6,7 +6,7 @@ services:
     build: ./frontend
     container_name: barunchuk-frontend-dev
     ports:
-      - "3000:3000" # 호스트(EC2)의 3000번 포트를 컨테이너의 3000번 포트에 연결
+      - "3001:3001" # 호스트(EC2)의 3000번 포트를 컨테이너의 3000번 포트에 연결
     networks:
       - barunchuk
     volumes:
@@ -17,12 +17,13 @@ services:
     build: ./backend/server
     container_name: barunchuk-backend-node-dev
     ports:
-      - "5000:5000"
+      - "3000:3000"
     networks:
       - barunchuk
     volumes:
       - ./backend/server:/app # EC2의 backend/server 폴더를 컨테이너 /app에 마운트
       - /app/node_modules
+      - ./frontend/dist:/app/frontend_dist
 
   backend-python:
     build: ./backend/fastapi

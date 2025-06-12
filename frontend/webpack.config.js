@@ -1,10 +1,11 @@
+// barunChuk/frontend/webpack.config.js
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
   entry: './src/index.jsx',
   output: {
-    path: path.resolve(__dirname, 'dist'),
+    path: path.resolve(__dirname, 'dist'), // 빌드 결과물이 저장될 경로 (이 경로가 호스트에 생성됩니다)
     filename: 'bundle.js',
     clean: true
   },
@@ -25,18 +26,23 @@ module.exports = {
       template: './public/index.html'
     })
   ],
-    devServer: {
-      host:'0.0.0.0',
-      port: 3000,
-      static: path.join(__dirname, 'public'), 
-      open: true,
-      watchFiles: {
-        paths: ['src/**/*', 'public/**/*'], // 감지할 파일/폴더 명시
-        options: {
-          usePolling: true, // 폴링 사용을 명시
-          interval: 1000 // 1초(1000ms)마다 파일 변경 여부를 주기적으로 확인
-        }
-      }
+  devServer: {
+    host:'0.0.0.0',
+    port: 3001, // 현재 3001로 설정되어 있습니다. (이 부분은 docker-compose.yml과 맞춰야 합니다)
+    static: path.join(__dirname, 'public'),
+    open: true,
+    // ⭐⭐⭐ 다음 devMiddleware 섹션을 추가합니다. ⭐⭐⭐
+    devMiddleware: {
+      writeToDisk: true, // ⭐⭐ 개발 중에도 빌드 결과물을 디스크(./dist)에 씁니다.
     },
+    // ⭐⭐⭐ 여기까지 추가 ⭐⭐⭐
+    watchFiles: {
+      paths: ['src/**/*', 'public/**/*'], // 감지할 파일/폴더 명시
+      options: {
+        usePolling: true, // 폴링 사용을 명시
+        interval: 1000 // 1초(1000ms)마다 파일 변경 여부를 주기적으로 확인
+      }
+    }
+  },
   mode: 'development'
 };
