@@ -28,7 +28,7 @@ function App() {
 
   return (
     <div>
-    <h1>uplopad test입니다.</h1>
+    <h1>uplopad test입니다.2번째</h1>
       <video ref={videoRef} autoPlay playsInline />
       <button onClick={captureAndSend}>자세 분석</button>
       <WebcamComponent/>
