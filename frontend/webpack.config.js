@@ -31,18 +31,22 @@ module.exports = {
     port: 3001, // 현재 3001로 설정되어 있습니다. (이 부분은 docker-compose.yml과 맞춰야 합니다)
     static: path.join(__dirname, 'public'),
     open: true,
-    // ⭐⭐⭐ 다음 devMiddleware 섹션을 추가합니다. ⭐⭐⭐
+    // devMiddleware 섹션
+    historyApiFallback: true,
     devMiddleware: {
       writeToDisk: true, // ⭐⭐ 개발 중에도 빌드 결과물을 디스크(./dist)에 씁니다.
     },
-    // ⭐⭐⭐ 여기까지 추가 ⭐⭐⭐
+    
     watchFiles: {
       paths: ['src/**/*', 'public/**/*'], // 감지할 파일/폴더 명시
       options: {
         usePolling: true, // 폴링 사용을 명시
         interval: 1000 // 1초(1000ms)마다 파일 변경 여부를 주기적으로 확인
       }
-    }
+    },
+      allowedHosts: 'all' // 또는 ['all'] (문자열 'all' 또는 배열 ['all'] 사용 가능)
+    // 만약 특정 도메인만 허용하고 싶다면: allowedHosts: ['.barunchuk.5team.store', 'frontend']
+    
   },
   mode: 'development'
 };

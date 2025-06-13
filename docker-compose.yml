@@ -1,16 +1,16 @@
 # barunChuk/docker-compose.yml (EC2 개발 환경용)
-version: '3.8' # deploy 섹션을 위해 3.x 이상 버전을 권장합니다.
+version: '3.8'
 
 services:
   frontend:
     build: ./frontend
     container_name: barunchuk-frontend-dev
     ports:
-      - "3001:3001" # 호스트(EC2)의 3000번 포트를 컨테이너의 3000번 포트에 연결
+      - "3001:3001" 
     networks:
       - barunchuk
     volumes:
-      - ./frontend:/app # ⭐ EC2의 frontend 폴더를 컨테이너 /app에 마운트 (이것이 '바로바로' 반영의 핵심)
+      - ./frontend:/app 
       - /app/node_modules # node_modules는 컨테이너 내부에 생성되도록 예외 처리
 
   backend-node:
