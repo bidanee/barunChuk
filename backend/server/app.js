@@ -16,8 +16,8 @@ app.get("/health", function(req, res) {
   console.log("health check");
 });
 
-app.use('/video', createProxyMiddleware({
-    target: 'http://56.155.62.180:3000',
+app.use('/', createProxyMiddleware({
+    target: 'http://15.152.186.225:3000',
     changeOrigin: true,
     logLevel: 'debug' // 디버깅을 위해 로그 레벨 설정
 }));
