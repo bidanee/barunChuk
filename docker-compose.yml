@@ -1,4 +1,4 @@
-# barunChuk/docker-compose.yml (EC2 개발 환경용)
+#(EC2 개발 환경용)
 version: '3.8'
 
 services:
