@@ -1,29 +1,15 @@
-# import uvicorn
-# from fastapi import FastAPI
-# app = FastAPI()
-
-# @app.get("/")
-# async def root():
-#   return {"message": "Hello World"}
-
-# if __name__ == "__main__":
-#   uvicorn.run(app, host="0.0.0.0", port=8000)
-
+# backend/fastapi/app.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 import numpy as np
-import cv2
-# OpenCV 사용 불가능하므로, 실제 이미지 처리에는 PIL 등 다른 라이브러리 고려
-# from PIL import Image # Pillow 라이브러리 사용 시
-# import io # Pillow 사용 시 필요
+from PIL import Image # Pillow 라이브러리 임포트
+import io # BytesIO를 위해 임포트
+import mediapipe as mp # MediaPipe 라이브러리 임포트
 
 app = FastAPI()
-
-# CORS 설정: Node.js 서버(FastAPI 클라이언트)로부터의 요청 허용
-# Docker Compose 네트워크에서 Node.js는 FastAPI와 내부적으로 통신하므로,
-# 실제로는 Docker 네트워크 내의 Node.js 컨테이너 이름(backend-node)으로부터의 요청을 허용하게 됩니다.
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
         allow_origins=[
@@ -31,20 +17,30 @@ app.add_middleware(
         "https://barunchuk.5team.store", # 실제 프런트엔드 도메인
         "http://localhost:3001", # 개발용으로 로컬 React 앱 접근
         "http://forntend:3001"
-    ],
+    ], # 개발 단계용. 배포 시에는 특정 출처로 제한 (예: "http://backend-node:3000")
     allow_credentials=True,
-    allow_methods=["*"],  # 모든 HTTP 메서드 허용 (GET, POST 등)
-    allow_headers=["*"],  # 모든 헤더 허용
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 이미지 데이터를 받을 Pydantic 모델 정의
 class ImageData(BaseModel):
     image_data: str # Base64 인코딩된 이미지 문자열
 
+# MediaPipe Pose 모델 초기화
+# 한 번만 초기화하여 재사용하도록 전역 또는 앱 시작 시 설정
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(
+    static_image_mode=False, # 비디오 스트림이므로 False (추적 모드)
+    model_complexity=1,     # 모델 복잡도 (0, 1, 2). 1이 좋은 밸런스.
+    min_detection_confidence=0.5, # 최소 감지 신뢰도
+    min_tracking_confidence=0.5  # 최소 추적 신뢰도
+)
+
 # 루트 경로 핸들러
 @app.get("/")
 async def read_root():
-    return {"message": "FastAPI Posture Analysis Backend is running!"}
+    return {"message": "FastAPI Posture Analysis Backend is running with MediaPipe!"}
 
 # 자세 분석 엔드포인트
 @app.post("/analyze-pose")
@@ -53,53 +49,96 @@ async def analyze_pose(data: ImageData):
     Node.js 서버로부터 Base64 인코딩된 이미지 데이터를 받아 자세를 분석합니다.
     """
     try:
-        # Base64 이미지 데이터를 디코딩합니다.
-        # Node.js에서 'data:image/png;base64,' 접두사를 붙여 보냈다면 제거해야 합니다.
+        # 1. Base64 이미지 데이터를 디코딩하여 PIL Image 객체로 변환
         if "base64," in data.image_data:
             header, encoded_data = data.image_data.split(",", 1)
         else:
             encoded_data = data.image_data
             
-        nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
-        
-        # OpenCV는 EC2에서 사용할 수 없다고 하셨으므로,
-        # 이 부분은 실제 이미지 처리 라이브러리(PIL 등)로 대체해야 합니다.
-        # 현재는 예시를 위해 OpenCV 코드를 주석으로 남겨둡니다.
-        # img = cv2.imdecode(nparr, cv2.IMREAD_COLOR) # OpenCV 이미지로 디코딩
-        
-        # if img is None:
-        #     raise ValueError("Image decoding failed.")
+        image_bytes = base64.b64decode(encoded_data)
+        image_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB") # RGB로 변환하여 MediaPipe 호환
 
-        # --- 실제 자세 분석 로직 (TODO: 이 부분에 MediaPipe Python 코드 통합) ---
-        # OpenCV를 사용할 수 없으므로, MediaPipe Python 라이브러리를 직접 사용하거나
-        # 다른 이미지 처리 라이브러리(Pillow 등)로 이미지 데이터를 준비해야 합니다.
-        #
-        # 예시: Pillow를 사용하여 이미지 처리 (설치 필요: pip install Pillow)
-        # from PIL import Image
-        # import io
-        # image_bytes = base64.b64decode(encoded_data)
-        # img = Image.open(io.BytesIO(image_bytes))
-        #
-        # 여기서는 단순히 가상의 자세 점수와 피드백을 반환합니다.
-        import random
-        posture_score = random.randint(50, 100) # 가상의 자세 점수
-        feedback_messages = [
-            "좋은 자세를 유지하고 있습니다! 👍",
-            "목이 앞으로 나와 있어요. 거북목에 주의하세요.",
-            "등이 굽어 있습니다. 허리를 펴고 앉으세요.",
-            "어깨가 한쪽으로 기울어져 있습니다. 자세를 바르게 해주세요."
-        ]
-        posture_feedback = random.choice(feedback_messages) # 가상의 피드백
+        # 2. PIL Image를 MediaPipe가 처리할 수 있는 numpy 배열로 변환 (BGR 순서 필요 시 cvtColor 사용)
+        # MediaPipe는 기본적으로 RGB를 기대하므로, PIL Image의 RGB를 바로 사용
+        image_np = np.array(image_pil)
+        # 만약 MediaPipe가 BGR을 기대한다면 (OpenCV와의 호환성 때문에), 아래 줄 주석 해제:
+        # image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR) # OpenCV 없으므로 이 줄은 예시일 뿐
+
+        # 3. MediaPipe Pose 모델로 이미지 처리
+        results = pose.process(image_np)
+
+        # 4. 자세 분석 및 결과 생성
+        posture_score = 0
+        feedback_message = "자세를 감지하지 못했습니다."
+        
+        landmarks_data = []
+        if results.pose_landmarks:
+            # 랜드마크 데이터 추출 및 저장 (옵션)
+            for landmark in results.pose_landmarks.landmark:
+                landmarks_data.append({
+                    "x": landmark.x,
+                    "y": landmark.y,
+                    "z": landmark.z,
+                    "visibility": landmark.visibility
+                })
+            
+            # --- 자세 점수 및 피드백 계산 로직 ---
+            # 여기서 앉은 자세에 특화된 분석 로직을 구현합니다.
+            # 예시: 귀, 어깨, 엉덩이 랜드마크를 활용한 거북목 및 등 굽음 분석
+            left_ear = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR]
+            right_ear = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR]
+            left_shoulder = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_SHOULDER]
+            right_shoulder = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+            left_hip = results.pose_landmarks.landmark[mp_pose.PoseLandmark.LEFT_HIP]
+            right_hip = results.pose_landmarks.landmark[mp_pose.PoseLandmark.RIGHT_HIP]
+
+            # 가상의 거북목 각도 계산 (간단화된 예시)
+            # 어깨(Y)와 귀(Y)의 상대적인 위치로 목의 기울기 판단
+            # Y축 값이 클수록 아래에 있음
+            
+            # 목 랜드마크가 유효한지 확인
+            if (left_ear.visibility > 0.7 and right_ear.visibility > 0.7 and
+                left_shoulder.visibility > 0.7 and right_shoulder.visibility > 0.7):
+                
+                # 어깨 평균 Y 좌표
+                avg_shoulder_y = (left_shoulder.y + right_shoulder.y) / 2
+                # 귀 평균 Y 좌표
+                avg_ear_y = (left_ear.y + right_ear.y) / 2
+
+                # 목이 앞으로 나왔는지 (거북목) 판단: 귀가 어깨보다 너무 아래에 있으면 거북목으로 간주 (Y좌표 기준)
+                # 이 값은 카메라 각도, 사람의 체형에 따라 달라질 수 있으므로 조정 필요
+                if avg_ear_y > avg_shoulder_y + 0.1: # 0.1은 임계값, 조정 필요
+                    feedback_message = "거북목 자세입니다! 목을 뒤로 당겨주세요."
+                    posture_score = random.randint(30, 60) # 안 좋은 점수
+                elif avg_ear_y < avg_shoulder_y - 0.05: # 너무 뒤로 간 경우
+                    feedback_message = "목 자세는 좋습니다."
+                    posture_score = random.randint(70, 90) # 좋은 점수
+                else:
+                    feedback_message = "목 자세는 괜찮습니다."
+                    posture_score = random.randint(60, 80) # 보통 점수
+
+                # 등 굽음 판단 (어깨와 엉덩이의 X좌표 관계 등 복합적으로 판단 가능)
+                # 여기서는 단순히 랜덤 점수를 기반으로 좋은 피드백을 추가
+                if posture_score > 60:
+                     feedback_message += " 등도 곧게 펴고 계시네요!"
+                else:
+                     feedback_message += " 등을 좀 더 펴주세요."
+
+            else:
+                feedback_message = "자세를 명확히 감지하기 어렵습니다. 카메라 위치를 확인해주세요."
+                posture_score = 50 # 감지 어려울 때 기본 점수
 
         # --- 분석 결과 반환 ---
         return {
             "status": "success",
             "posture_score": posture_score,
-            "feedback": posture_feedback,
-            "timestamp": "some_timestamp" # 실제 시간 정보를 포함할 수 있음
-            # "landmarks": [] # 분석된 랜드마크 데이터 (필요 시 추가)
+            "feedback": feedback_message,
+            "timestamp": "some_timestamp", # 실제 시간 정보를 포함할 수 있음
+            "landmarks": landmarks_data # 분석된 랜드마크 데이터 (프런트엔드에서 활용 가능)
         }
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Image processing or analysis failed: {e}")
+        print(f"Error during pose analysis: {e}") # 서버 로그에 오류 출력
+        raise HTTPException(status_code=400, detail=f"Image processing or analysis failed: {e}. Ensure image data is valid and MediaPipe is correctly configured.")
+
 

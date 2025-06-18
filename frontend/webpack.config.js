@@ -58,7 +58,7 @@ module.exports = {
   // 개발 서버 설정
   devServer: {
     host: '0.0.0.0', // 모든 네트워크 인터페이스에서 접근 허용
-    port: 3001, // 현재 3001로 설정되어 있습니다. (이 부분은 docker-compose.yml과 맞춰야 합니다)
+    port: 3001, // React 개발 서버의 노출 포트
     // static 설정을 배열로 변경하여 public과 dist 폴더 모두를 서빙합니다.
     static: [
       { directory: path.join(__dirname, 'public') }, // 기존 public 폴더
@@ -76,7 +76,16 @@ module.exports = {
         interval: 1000 // 1초(1000ms)마다 파일 변경 여부를 주기적으로 확인
       }
     },
-    allowedHosts: 'all' // 모든 호스트의 접근을 허용
-    // 만약 특정 도메인만 허용하고 싶다면: allowedHosts: ['.barunchuk.5team.store', 'frontend']
+    allowedHosts: 'all', // 모든 호스트의 접근을 허용
+    // webpack-dev-server 자체의 WebSocket 연결 URL 설정
+    client: {
+      // 클라이언트가 ALB를 통해 HTTPS/WSS로 접속하고 있으므로, 그에 맞춰 설정
+      webSocketURL: {
+        hostname: 'barunchuk.5team.store',
+        protocol: 'wss', // HTTPS/WSS 프로토콜
+        port: 443,       // ALB 리스너의 포트
+        pathname: '/ws'  // webpack-dev-server의 기본 경로가 /ws이므로 맞춰줍니다.
+      }
+    }
   }
 };

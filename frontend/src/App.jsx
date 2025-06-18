@@ -16,6 +16,11 @@ const App = () => {
     const lastUpdateTimeRef = useRef(0);
     const scoreUpdateInterval = 1000; // 1초마다 점수 업데이트 (밀리초)
 
+    const lastFrameSendTimeRef = useRef(0);
+    const frameSendInterval = 100; // 100ms마다 프레임 전송 (초당 10프레임)
+
+    const webSocketRef = useRef(null); // WebSocket 인스턴스를 저장할 Ref
+
     // MediaPipe PoseLandmarker 초기화
     useEffect(() => {
         const initializePoseLandmarker = async () => {
@@ -46,6 +51,61 @@ const App = () => {
         initializePoseLandmarker();
     }, []);
 
+    // WebSocket 연결 설정 및 해제
+    useEffect(() => {
+        // ALB 리스너 (HTTPS:443) 및 경로 패턴 (/socket.io*)에 맞춰 URL 구성
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = 'barunchuk.5team.store'; 
+        // HTTPS의 기본 포트 443은 URL에서 생략 가능
+        // 만약 ALB가 특정 포트 (예: 3001)에서 HTTPS/WSS를 리스닝한다면 해당 포트를 명시
+        // 현재 ALB 리스너는 443으로 되어 있으므로 포트 생략
+        const wsPath = '/socket.io'; // ALB 규칙에 명시된 경로
+        
+        // 최종 URL은 'wss://barunchuk.5team.store/socket.io' 형태가 됩니다.
+        const wsUrl = `${protocol}//${wsHost}${wsPath}`; 
+        console.log("Attempting WebSocket connection to:", wsUrl);
+
+        // 이전 WebSocket 연결이 있다면 닫기
+        if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+            webSocketRef.current.close();
+        }
+
+        webSocketRef.current = new WebSocket(wsUrl);
+
+        webSocketRef.current.onopen = () => {
+            console.log('WebSocket connected to Node.js server');
+        };
+
+        webSocketRef.current.onmessage = (event) => {
+            // Node.js (FastAPI)로부터 받은 메시지 처리
+            try {
+                const result = JSON.parse(event.data);
+                console.log('Received analysis result:', result);
+                if (result.posture_score !== undefined) {
+                    setLastPostureScore(result.posture_score);
+                    setPostureFeedback(result.feedback || "자세 분석 피드백.");
+                }
+            } catch (e) {
+                console.error("Failed to parse WebSocket message:", e, event.data);
+            }
+        };
+
+        webSocketRef.current.onclose = () => {
+            console.log('WebSocket disconnected');
+        };
+
+        webSocketRef.current.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        // 컴포넌트 언마운트 시 WebSocket 연결 해제
+        return () => {
+            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
+                webSocketRef.current.close();
+            }
+        };
+    }, []); // 빈 배열: 컴포넌트가 처음 마운트될 때만 실행
+
     // 웹캠 활성화/비활성화 토글
     const toggleWebcam = () => {
         setIsWebcamActive(prev => !prev);
@@ -73,9 +133,7 @@ const App = () => {
             // MediaPipe PoseLandmarker로 자세 분석
             const detections = poseLandmarker.detectForVideo(video, performance.now());
 
-            if (detections.landmarks && detections.landmarks.length > 0 && Array.isArray(PoseLandmarker.POSE_CONNECTIONS)) {
-                // MediaPipe의 detections.landmarks는 [[landmark1, landmark2, ...]] 형태입니다.
-                // numPoses: 1이므로 detections.landmarks[0]에 실제 랜드마크 배열이 있습니다.
+            if (detections.landmarks && detections.landmarks.length > 0) {
                 const currentLandmarks = detections.landmarks[0]; // 첫 번째 사람의 랜드마크 배열
 
                 // 랜드마크 그리기
@@ -89,8 +147,6 @@ const App = () => {
                     8,  // right_ear
                     11, // left_shoulder
                     12, // right_shoulder
-                    23, // left_hip
-                    24  // right_hip
                 ];
 
                 for (let i = 0; i < currentLandmarks.length; i++) {
@@ -123,18 +179,15 @@ const App = () => {
                     }
                     drawSingleLandmark(ctx, landmark, landmarkStyle);
                 }
-
-                // 점수 업데이트 로직: 일정 시간 간격으로만 업데이트
-                if (timestamp - lastUpdateTimeRef.current > scoreUpdateInterval) {
-                    const neckAngle = calculateNeckAngle(currentLandmarks); // currentLandmarks를 전달
-                    if (neckAngle && neckAngle < 150) { // 예시: 거북목 기준
-                        setPostureFeedback("거북목 자세입니다! 자세를 바르게 해주세요.");
-                    } else {
-                        setPostureFeedback("좋은 자세를 유지하고 있습니다.");
-                    }
-                    setLastPostureScore(Math.floor(Math.random() * 100)); // 예시 점수
-                    lastUpdateTimeRef.current = timestamp; // 마지막 업데이트 시간 갱신
-                }
+            }
+            // 웹캠 프레임을 Node.js 서버로 전송 (일정 간격으로)
+            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN &&
+                timestamp - lastFrameSendTimeRef.current > frameSendInterval) {
+                
+                // 캔버스 내용을 Base64 이미지로 변환
+                const imageData = canvas.toDataURL('image/jpeg', 0.5); // JPEG, 품질 0.5
+                webSocketRef.current.send(imageData);
+                lastFrameSendTimeRef.current = timestamp;
             }
         }
         requestAnimationFrame(predictPose); // 다음 프레임 요청
@@ -154,8 +207,8 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
                 // console.warn("drawConnectors: Invalid connection element, skipping.", connection);
                 continue;
             }
-            const startIdx = connection[0]; // 배열 인덱스 직접 접근
-            const endIdx = connection[1];   // 배열 인덱스 직접 접근
+            const startIdx = connection[0]; 
+            const endIdx = connection[1];   
             
             // 랜드마크 인덱스가 유효한지 확인
             if (!landmarks[startIdx] || !landmarks[endIdx]) {
@@ -193,8 +246,7 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
     };
     // 랜드마크 점 그리는 함수 (이전 drawLandmarks에서 분리 및 개선)
     const drawLandmarks = (ctx, landmarks, style) => {
-        // 이 함수는 이제 사용되지 않고 predictPose 내부에서 직접 drawSingleLandmark를 호출합니다.
-        // 하지만 기존 호출 방식과의 호환성을 위해 남겨둡니다.
+        // 이 함수는 이제 사용되지 않고 predictPose 내부에서 직접 drawSingleLandmark를 호출, 근데 혹시모르니까 남겨둠
         if (!Array.isArray(landmarks)) {
             console.error("drawLandmarks: 'landmarks' is not an array.", landmarks);
             return;
@@ -211,7 +263,7 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
     };
 
 
-    // 가상의 목 각도 계산 함수 (실제 구현은 더 복잡할 수 있음)
+    // 가상의 목 각도 계산 함수 fastapi에서 처리할 예정
     const calculateNeckAngle = (landmarks) => {
         if (!Array.isArray(landmarks) || landmarks.length < 13) return null; // 최소한 필요한 랜드마크 개수
         if (!landmarks[7] || !landmarks[8] || !landmarks[11] || !landmarks[12]) return null;
