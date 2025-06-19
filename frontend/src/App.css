@@ -147,7 +147,7 @@ body {
     color: #333; /* 어두운 색상 유지 */
 }
 
-.webcam-feed, .webcam-canvas {
+.webcam-feed, .webcam-canvas  {
     position: absolute;
     top: 0;
     left: 0;
@@ -169,7 +169,9 @@ body {
     transform: translate(-50%, -50%);
 }
 
+
 .webcam-toggle-button {
+    margin-right: 30px;
     padding: 10px 25px;
     background-color: #22c55e; 
     color: #fff;
@@ -185,6 +187,33 @@ body {
 .webcam-toggle-button:hover {
     background-color: #16a34a;
 }
+
+/* 기준 자세 설정 버튼 스타일 */
+.reference-pose-button {
+
+    padding: 10px 25px;
+    background-color: #007bff; /* 파란색 */
+    color: #fff;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease-in-out;
+    cursor: pointer;
+    border: none;
+}
+
+.reference-pose-button:hover {
+    background-color: #0056b3;
+}
+
+.reference-set-message {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    color: #007bff; /* 파란색 */
+    text-align: center;
+}
+
 
 /* 오른쪽 섹션 - 자세 점수 및 피드백 */
 .right-section {

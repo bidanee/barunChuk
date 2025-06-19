@@ -1,49 +1,59 @@
-// frontend/src/App.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import Webcam from 'react-webcam';
 import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
-import './App.css'; // CSS 파일 import
+import {io} from 'socket.io-client'
+import './App.css'; 
 
 const App = () => {
     const webcamRef = useRef(null);
     const canvasRef = useRef(null);
     const [poseLandmarker, setPoseLandmarker] = useState(null);
     const [isWebcamActive, setIsWebcamActive] = useState(false);
-    const [lastPostureScore, setLastPostureScore] = useState(70); // 웹캠 비활성화 시 표시될 기본 점수
+    const [lastPostureScore, setLastPostureScore] = useState(0); // 웹캠 비활성화 시 표시될 기본 점수
     const [postureFeedback, setPostureFeedback] = useState("어제 보다 바른 자세 유지 시간이 길어졌습니다 👍");
-    const [currentView, setCurrentView] = useState('realtime'); // 'realtime' 또는 'video'
-    // 점수 업데이트 시간 간격 제어를 위한 Ref
-    const lastUpdateTimeRef = useRef(0);
-    const scoreUpdateInterval = 1000; // 1초마다 점수 업데이트 (밀리초)
+    const [currentView, setCurrentView] = useState('realtime'); 
 
+    // const fixedExternalPageUrl = 'https://56.155.62.180:3000';
+    const fixedExternalPageUrl = 'https://eunbie.site';
+    
+    //기준 자세 설정 관련
+    // 기준 자세 설정 관련 상태 및 Ref
+    const [referencePoseLandmarks, setReferencePoseLandmarks] = useState(null); // 기준 자세 랜드마크 저장
+    const referencePoseLandmarksRef = useRef(null); // 기준 자세 랜드마크의 최신 값을 predictPose에 전달하기 위한 Ref
+    const latestLandmarksRef = useRef(null); // predictPose에서 감지된 최신 랜드마크 임시 저장
+    const [referenceSetMessage, setReferenceSetMessage] = useState(''); // 기준 자세 설정 메시지
+    
     const lastFrameSendTimeRef = useRef(0);
-    const frameSendInterval = 100; // 100ms마다 프레임 전송 (초당 10프레임)
+    const frameSendInterval = 1000; // 100ms마다 프레임 전송 (초당 10프레임)
 
-    const webSocketRef = useRef(null); // WebSocket 인스턴스를 저장할 Ref
+    const socketRef = useRef(null); // socket.io 인스턴스를 저장할 Ref
 
     // MediaPipe PoseLandmarker 초기화
     useEffect(() => {
         const initializePoseLandmarker = async () => {
-            console.log("Initializing PoseLandmarker...");
+            console.log("랜드마크 초기화 중");
             try {
                 const vision = await FilesetResolver.forVisionTasks(
                     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
                 );
                 const landmarker = await PoseLandmarker.createFromOptions(vision, {
                     baseOptions: {
-                        modelAssetPath: `/pose_landmarker_full.task`, // public 폴더에 있다고 가정, webpack 설정에 따라 경로 변경
+                        modelAssetPath: `/pose_landmarker_full.task`, // public 폴더에 있으면 이런식
                         delegate: "GPU"
                     },
                     runningMode: "VIDEO",
                     numPoses: 1,
-                    // 랜드마크 떨림 개선을 위한 신뢰도 임계값 조정
-                    minDetectionConfidence: 0.7, // 포즈 감지 최소 신뢰도
-                    minTrackingConfidence: 0.7,  // 랜드마크 추적 최소 신뢰도
-                    minPresenceConfidence: 0.7   // 랜드마크 존재 최소 신뢰도
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5, 
+                    minPresenceConfidence: 0.5  
                 });
                 setPoseLandmarker(landmarker);
                 console.log("MediaPipe PoseLandmarker 초기화 완료.");
-                console.log("PoseLandmarker.POSE_CONNECTIONS:", PoseLandmarker.POSE_CONNECTIONS); // POSE_CONNECTIONS 값 확인
+                // 초기화 시점 값 확인
+                // console.log("PoseLandmarker.POSE_CONNECTIONS (on init):", PoseLandmarker.POSE_CONNECTIONS); 
+                if (!PoseLandmarker.POSE_CONNECTIONS || PoseLandmarker.POSE_CONNECTIONS.length === 0) {
+                    console.error("POSE_CONNECTIONS is empty or invalid after init!");
+                }
             } catch (error) {
                 console.error("MediaPipe PoseLandmarker 초기화 실패:", error);
             }
@@ -51,73 +61,106 @@ const App = () => {
         initializePoseLandmarker();
     }, []);
 
-    // WebSocket 연결 설정 및 해제
+    // Socket.io 연결 설정 및 해제
     useEffect(() => {
-        // ALB 리스너 (HTTPS:443) 및 경로 패턴 (/socket.io*)에 맞춰 URL 구성
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = 'barunchuk.5team.store'; 
-        // HTTPS의 기본 포트 443은 URL에서 생략 가능
-        // 만약 ALB가 특정 포트 (예: 3001)에서 HTTPS/WSS를 리스닝한다면 해당 포트를 명시
-        // 현재 ALB 리스너는 443으로 되어 있으므로 포트 생략
-        const wsPath = '/socket.io'; // ALB 규칙에 명시된 경로
-        
-        // 최종 URL은 'wss://barunchuk.5team.store/socket.io' 형태가 됩니다.
-        const wsUrl = `${protocol}//${wsHost}${wsPath}`; 
-        console.log("Attempting WebSocket connection to:", wsUrl);
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        const wsHost = 'barunchuk.5team.store';
+        const wsPath = '/socket.io'; 
+        const wsPort = '443'
+        const socketUrl = `${protocol}//${wsHost}:${wsPort}`; 
+        console.log("Attempting WebSocket connection to:", socketUrl);
 
-        // 이전 WebSocket 연결이 있다면 닫기
-        if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-            webSocketRef.current.close();
+        if (socketRef.current && socketRef.current.connected) { 
+            socketRef.current.disconnect(); 
         }
+        socketRef.current = io(socketUrl, {
+            path: wsPath,
+            transports: ['websocket'], 
+            forceNew: true
+        });
 
-        webSocketRef.current = new WebSocket(wsUrl);
+        socketRef.current.on('connect', () => {
+            console.log('Socket.IO connected to Node.js server!');
+        });
 
-        webSocketRef.current.onopen = () => {
-            console.log('WebSocket connected to Node.js server');
-        };
+        socketRef.current.on('connection_test', (message) => {
+            console.log('Server test message:', message);
+        });
 
-        webSocketRef.current.onmessage = (event) => {
-            // Node.js (FastAPI)로부터 받은 메시지 처리
+        socketRef.current.on('analysis_result', (data) => {
             try {
-                const result = JSON.parse(event.data);
-                console.log('Received analysis result:', result);
-                if (result.posture_score !== undefined) {
-                    setLastPostureScore(result.posture_score);
-                    setPostureFeedback(result.feedback || "자세 분석 피드백.");
+                console.log('Received analysis result:', data);
+                if (data.posture_score !== undefined) {
+                    setLastPostureScore(data.posture_score);
+                    setPostureFeedback(data.feedback || "자세 분석 피드백.");
                 }
             } catch (e) {
-                console.error("Failed to parse WebSocket message:", e, event.data);
+                console.error("Failed to parse Socket.IO message:", e, data);
             }
-        };
+        });
 
-        webSocketRef.current.onclose = () => {
-            console.log('WebSocket disconnected');
-        };
+        socketRef.current.on('analysis_error', (error) => {
+            console.error('Socket.IO analysis error:', error);
+        });
 
-        webSocketRef.current.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+        socketRef.current.on('disconnect', () => {
+            console.log('Socket.IO disconnected');
+        });
 
-        // 컴포넌트 언마운트 시 WebSocket 연결 해제
+        socketRef.current.on('connect_error', (error) => {
+            console.error('Socket.IO connection error:', error);
+        });
         return () => {
-            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN) {
-                webSocketRef.current.close();
+            if (socketRef.current) {
+                socketRef.current.disconnect();
             }
         };
-    }, []); // 빈 배열: 컴포넌트가 처음 마운트될 때만 실행
+    }, []); 
 
     // 웹캠 활성화/비활성화 토글
     const toggleWebcam = () => {
-        setIsWebcamActive(prev => !prev);
+        setIsWebcamActive(prev => {
+            // console.log("웹캠 활성화 확인", !prev); 
+            return !prev;
+        });
+    };
+    // '실시간' & '영상 분석' 뷰 변경 핸들러
+    const handleViewChange = (view) => {
+        setCurrentView(view);
+        if (view === 'realtime') {
+            if (!isWebcamActive) { 
+                setIsWebcamActive(true);
+            }
+        } else { 
+            if (isWebcamActive) {
+                setIsWebcamActive(false);
+            }
+        }
+    };
+    // 기준 자세 설정 함수
+    const setReferencePose = () => {
+        if (!isWebcamActive || !latestLandmarksRef.current || latestLandmarksRef.current.length === 0) {
+            setReferenceSetMessage('웹캠이 활성화되어 있고 자세가 감지된 상태에서 설정해주세요!');
+            // 메시지 3초 후 사라지도록
+            setTimeout(() => setReferenceSetMessage(''), 3000);
+            return;
+        }
+        // 상태와 Ref 모두 업데이트
+        setReferencePoseLandmarks(latestLandmarksRef.current);
+        referencePoseLandmarksRef.current = latestLandmarksRef.current; // Ref에도 저장
+        setReferenceSetMessage('기준 자세가 설정되었습니다!');
+        console.log('Reference pose set:', latestLandmarksRef.current);
+        setTimeout(() => setReferenceSetMessage(''), 3000);
     };
 
-    // 실시간 자세 분석 및 랜드마크 그리기
+
+    // 실시간 자세 분석 및 랜드마크 그리는 코드
     const predictPose = async (timestamp) => {
-        if (webcamRef.current && poseLandmarker && isWebcamActive) {
+        if (webcamRef.current && poseLandmarker && isWebcamActive && currentView === 'realtime') { 
             const video = webcamRef.current.video;
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
-            // videoWidth 또는 videoHeight가 0인 경우 처리를 건너뛰고 다음 프레임 대기
+
             if (video.videoWidth === 0 || video.videoHeight === 0) {
                 requestAnimationFrame(predictPose);
                 return;
@@ -130,11 +173,12 @@ const App = () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // MediaPipe PoseLandmarker로 자세 분석
+            // MediaPipe PoseLandmarker로 랜드마크 감지
             const detections = poseLandmarker.detectForVideo(video, performance.now());
 
-            if (detections.landmarks && detections.landmarks.length > 0) {
-                const currentLandmarks = detections.landmarks[0]; // 첫 번째 사람의 랜드마크 배열
+            if (detections.landmarks && detections.landmarks.length > 0 && Array.isArray(PoseLandmarker.POSE_CONNECTIONS)) {
+                const currentLandmarks = detections.landmarks[0]; 
+                latestLandmarksRef.current = currentLandmarks; // 최신 랜드마크 Ref에 저장
 
                 // 랜드마크 그리기
                 drawConnectors(ctx, currentLandmarks, PoseLandmarker.POSE_CONNECTIONS, {
@@ -143,6 +187,7 @@ const App = () => {
                 });
                 // 중요 랜드마크와 일반 랜드마크를 다르게 그리기
                 const importantLandmarkIndices = [
+                    0, // nose
                     7,  // left_ear
                     8,  // right_ear
                     11, // left_shoulder
@@ -160,16 +205,15 @@ const App = () => {
                             const normalizedRadius = (lm.visibility || 0) * 5;
                             return Math.max(1, normalizedRadius);
                         },
-                        fillColor: 'white', // 일반 랜드마크 흰색 채우기
-                        color: 'white',     // 일반 랜드마크 흰색 테두리
+                        fillColor: 'white', 
+                        color: 'white',     
                         lineWidth: 1
                     };
 
                     if (importantLandmarkIndices.includes(i)) {
-                        // 중요 랜드마크는 더 크게, 다른 색상으로 표시
                         landmarkStyle = {
                             radius: (lm) => {
-                                const normalizedRadius = (lm.visibility || 0) * 10; // 2배 크게
+                                const normalizedRadius = (lm.visibility || 0) * 10; 
                                 return Math.max(3, normalizedRadius);
                             },
                             fillColor: '#00BFFF', // 색상
@@ -179,39 +223,72 @@ const App = () => {
                     }
                     drawSingleLandmark(ctx, landmark, landmarkStyle);
                 }
+            } else {
+                latestLandmarksRef.current = null; // 랜드마크 감지 안 되면 Ref 초기화
             }
+
             // 웹캠 프레임을 Node.js 서버로 전송 (일정 간격으로)
-            if (webSocketRef.current && webSocketRef.current.readyState === WebSocket.OPEN &&
+            if (socketRef.current && socketRef.current.connected && isWebcamActive &&
                 timestamp - lastFrameSendTimeRef.current > frameSendInterval) {
-                
-                // 캔버스 내용을 Base64 이미지로 변환
-                const imageData = canvas.toDataURL('image/jpeg', 0.5); // JPEG, 품질 0.5
-                webSocketRef.current.send(imageData);
+
+                const imageData = canvas.toDataURL('image/jpeg', 0.8); // JPEG, 품질 0.5
+
+                // Socket.IO로 보낼 데이터 객체 (기준 자세 랜드마크 포함)
+                const dataToSend = {
+                    imageData: imageData,
+                    referencePoseData: referencePoseLandmarksRef.current // Ref의 현재 값 사용
+                };
+                socketRef.current.emit('image_frame', dataToSend); // 데이터 객체 전송
                 lastFrameSendTimeRef.current = timestamp;
+            } else if (socketRef.current && !socketRef.current.connected) {
+                // console.log("Socket.IO not connected, skipping frame send.");
+            } else if (!isWebcamActive) {
+                // console.log("Webcam not active, skipping frame send.");
             }
+        }else if (currentView === 'video') { 
+            // iframe으로 외부 페이지를 보여주므로 predictPose에서 웹캠 스트림을 처리하지 않음
         }
         requestAnimationFrame(predictPose); // 다음 프레임 요청
     };
 
     // 랜드마크 연결선 그리는 함수 
-const drawConnectors = (ctx, landmarks, connections, style) => {
+    const drawConnectors = (ctx, landmarks, connections, style) => {
+        // // --- 디버깅용: drawConnectors 함수 진입 로그 ---
+        // console.log("drawConnectors function entered. Connections length:", connections?.length); 
+        // console.log("drawConnectors received connections (full):", connections); 
+
         if (!Array.isArray(connections)) {
             console.error("drawConnectors: 'connections' is not an array.", connections);
             return;
         }
+        if (connections.length === 0) {
+            // console.warn("drawConnectors: 'connections' array is empty, no lines will be drawn.");
+            return;
+        }
+
         ctx.save();
         ctx.beginPath();
         for (let i = 0; i < connections.length; i++) {
             const connection = connections[i];
-            if (!Array.isArray(connection) || connection.length !== 2) {
-                // console.warn("drawConnectors: Invalid connection element, skipping.", connection);
+
+            let startIdx, endIdx;
+            if (typeof connection === 'object' && connection !== null && 
+                       typeof connection.start === 'number' && typeof connection.end === 'number') {
+                startIdx = connection.start; 
+                endIdx = connection.end;     
+            } else if (Array.isArray(connection) && connection.length === 2) { // 배열 형태일 때 (대비)
+                startIdx = connection[0]; 
+                endIdx = connection[1];
+            } else {
+                console.warn("drawConnectors: Invalid connection element, skipping.", connection); 
+                continue; 
+            }
+            
+            if (!landmarks[startIdx] || !landmarks[endIdx]) {
                 continue;
             }
-            const startIdx = connection[0]; 
-            const endIdx = connection[1];   
-            
-            // 랜드마크 인덱스가 유효한지 확인
-            if (!landmarks[startIdx] || !landmarks[endIdx]) {
+
+            if ((landmarks[startIdx].visibility || 0) < 0.5 || (landmarks[endIdx].visibility || 0) < 0.5) {
                 continue;
             }
 
@@ -225,9 +302,10 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
         }
         ctx.lineWidth = style.lineWidth;
         ctx.strokeStyle = style.color;
-        ctx.stroke();
+        ctx.stroke(); 
         ctx.restore();
     };
+
     // 단일 랜드마크 점을 그리는 내부 헬퍼 함수
     const drawSingleLandmark = (ctx, landmark, style) => {
         ctx.beginPath();
@@ -243,55 +321,6 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
         ctx.lineWidth = style.lineWidth;
         ctx.strokeStyle = style.color;
         ctx.stroke();
-    };
-    // 랜드마크 점 그리는 함수 (이전 drawLandmarks에서 분리 및 개선)
-    const drawLandmarks = (ctx, landmarks, style) => {
-        // 이 함수는 이제 사용되지 않고 predictPose 내부에서 직접 drawSingleLandmark를 호출, 근데 혹시모르니까 남겨둠
-        if (!Array.isArray(landmarks)) {
-            console.error("drawLandmarks: 'landmarks' is not an array.", landmarks);
-            return;
-        }
-        ctx.save();
-        for (let i = 0; i < landmarks.length; i++) {
-            const landmark = landmarks[i];
-            if (!landmark || typeof landmark.x !== 'number' || typeof landmark.y !== 'number') {
-                continue;
-            }
-            drawSingleLandmark(ctx, landmark, style); // 기존 스타일로 그리기
-        }
-        ctx.restore();
-    };
-
-
-    // 가상의 목 각도 계산 함수 fastapi에서 처리할 예정
-    const calculateNeckAngle = (landmarks) => {
-        if (!Array.isArray(landmarks) || landmarks.length < 13) return null; // 최소한 필요한 랜드마크 개수
-        if (!landmarks[7] || !landmarks[8] || !landmarks[11] || !landmarks[12]) return null;
-
-        const leftEar = landmarks[7];
-        const rightEar = landmarks[8];
-        const leftShoulder = landmarks[11];
-        const rightShoulder = landmarks[12];
-
-        const neckCenterX = (leftEar.x + rightEar.x + leftShoulder.x + rightShoulder.x) / 4;
-        const neckCenterY = (leftEar.y + rightEar.y + leftShoulder.y + rightShoulder.y) / 4;
-
-        const vecX1 = leftShoulder.x - neckCenterX;
-        const vecY1 = leftShoulder.y - neckCenterY;
-
-        const vecX2 = leftEar.x - neckCenterX;
-        const vecY2 = leftEar.y - neckCenterY;
-
-        const dotProduct = vecX1 * vecX2 + vecY1 * vecY2;
-        const magnitude1 = Math.sqrt(vecX1 * vecX1 + vecY1 * vecY1);
-        const magnitude2 = Math.sqrt(vecX2 * vecX2 + vecY2 * vecY2);
-
-        if (magnitude1 === 0 || magnitude2 === 0) return null;
-
-        const angleRad = Math.acos(dotProduct / (magnitude1 * magnitude2));
-        const angleDeg = angleRad * (180 / Math.PI);
-
-        return angleDeg;
     };
 
     // 웹캠이 활성화되면 predictPose 시작
@@ -311,83 +340,82 @@ const drawConnectors = (ctx, landmarks, connections, style) => {
                 <div className="main-content-wrapper">
                     <div className="top-buttons-container">
                         <button
-                            onClick={() => setCurrentView('video')}
+                            onClick={() => handleViewChange('video')}
                             className={`function-button ${currentView === 'video' ? 'active' : ''}`}
                         >
                             영상 분석
                         </button>
                         <button
-                            onClick={() => setCurrentView('realtime')}
+                            onClick={() => handleViewChange('realtime')}
                             className={`function-button ${currentView === 'realtime' ? 'active' : ''}`}
                         >
                             실시간
                         </button>
                     </div>
-                    <div className="video-score-feedback-container">
-                        <div className="left-section">
-                            <div className="video-correction-service-container">
-                                <div className="video-content-wrapper">
-                                    {currentView === 'realtime' && (
-                                        <>
-                                            {isWebcamActive ? (
-                                                <>
-                                                    <Webcam
-                                                        ref={webcamRef}
-                                                        mirrored={true}
-                                                        className="webcam-feed"
-                                                        onUserMedia={() => console.log('Webcam active')}
-                                                        onUserMediaError={(error) => console.error('Webcam error:', error)}
-                                                    />
-                                                    <canvas
-                                                        ref={canvasRef}
-                                                        className="webcam-canvas"
-                                                        style={{ transform: 'scaleX(-1)' }}
-                                                    />
-                                                </>
-                                            ) : (
-                                                <div className="webcam-inactive-message">웹캠이 비활성화되었습니다.</div>
-                                            )}
-                                        </>
-                                    )}
-                                    {currentView === 'video' && (
-                                        <div className="video-analysis-placeholder">
-                                            영상 분석 기능은 아직 준비 중입니다.
-                                        </div>
-                                    )}
+                    {currentView == 'realtime' && (
+                        <div className='video-score-feedback-container'>
+                            <div className="left-section">
+                                <div className="video-correction-service-container">
+                                    <div className="video-content-wrapper">
+                                        {isWebcamActive? (
+                                            <>
+                                            <Webcam ref={webcamRef} mirrored={true} className='webcam-feed' onUserMedia={() => console.log('Webcam Active')} onUserMediaError={(error)=> console.error('Webcam error: ',error)}/>
+                                            <canvas ref={canvasRef} className='webcam-canvas' style={{transform:'scaleX(-1)'}}/>
+                                            </>
+                                        ) : (
+                                            <div className='webcam-inactive-message'>웹캠이 비활성화되었습니다.</div>
+                                        )}
+                                    </div>
                                 </div>
+                                <div className="webcam-control-buttons">
+                                    <button onClick={toggleWebcam} className="webcam-toggle-button">
+                                        {isWebcamActive ? '웹캠 비활성화' : '웹캠  활성화'}
+                                    </button>
+                                    <button onClick={setReferencePose} className="reference-pose-button">
+                                        기준 자세 설정
+                                    </button>
+                                </div>
+                                {referenceSetMessage && (
+                                <p className="reference-set-message">{referenceSetMessage}</p>
+                                )}
                             </div>
-                            <button
-                                onClick={toggleWebcam}
-                                className="webcam-toggle-button"
-                            >
-                                {isWebcamActive ? '웹캠 비활성화' : '웹캠 활성화'}
-                            </button>
-                        </div>
-
-                        {/* 자세, 점수 피드백 */}
-                        <div className="right-section">
-                            <div className="posture-score-box">
-                                <h2 className="box-title">자세 점수</h2>
-                                <div className="posture-score-display">
-                                    <span className="posture-score-value">
-                                        {isWebcamActive ? lastPostureScore : lastPostureScore}
-                                    </span>
-                                </div>
-                            
-                                <h2 className="box-title">알림 & 피드백</h2>
-                                <div className="feedback-weekly-label">
-                                    <span>주간</span>
-                                </div>
-                                <div className="weekly-graph-placeholder">
-                                    (주간 자세 점수 그래프 영역 - 추후 구현)
-                                </div>
-                                <div className="feedback-text">
-                                    {isWebcamActive ? postureFeedback : "웹캠 비활성화 상태입니다. 이전 자세 점수와 피드백이 표시됩니다."}
-                                    <p className="feedback-message">{postureFeedback}</p>
+                            {/* 자세, 점수 피드백 */}
+                            <div className="right-section">
+                                <div className="posture-score-box">
+                                    <h2 className="box-title">자세 점수</h2>
+                                    <div className="posture-score-display">
+                                        <span className="posture-score-value">
+                                            {isWebcamActive ? lastPostureScore : lastPostureScore}
+                                        </span>
+                                    </div>
+                                
+                                    <h2 className="box-title">알림 & 피드백</h2>
+                                    <div className="feedback-weekly-label">
+                                        <span>주간</span>
+                                    </div>
+                                    <div className="weekly-graph-placeholder">
+                                        (주간 자세 점수 그래프 영역 - 추후 구현)
+                                    </div>
+                                    <div className="feedback-text">
+                                        {isWebcamActive ? "웹캠 활성화 상태입니다." : "웹캠 비활성화 상태입니다. 이전 자세 점수와 피드백이 표시됩니다."}
+                                        <p className="feedback-message">{postureFeedback}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div> 
+                    )}
+                    {currentView === 'video' && (
+                        // 영상 분석 모드일 때 iframe 렌더링 (고정된 URL 사용)
+                        <iframe
+                            id="external-page-iframe"
+                            src={fixedExternalPageUrl} // 고정된 URL 사용
+                            title="External Analysis Page"
+                            className="external-page-iframe"
+                            allow="camera; microphone; fullscreen;" // 필요한 권한 허용 (사이트에 따라)
+                        >
+                            <p>이 브라우저는 iframe을 지원하지 않습니다.</p>
+                        </iframe>
+                    )}
                 </div> 
             </div>
         </div> 
