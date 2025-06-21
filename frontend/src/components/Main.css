@@ -1,0 +1,91 @@
+.main-components-wrapper{
+    width:100%;
+    height:calc(100vh - 108px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.main-title {
+    margin: 40px 0 20px;
+}
+.main-components-container{
+    display:flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 1000px;
+}
+
+.main-stream-graph-container {
+    display: flex;
+    flex-direction: column;
+    margin-right: 2rem;
+}
+
+.main-video-container {
+    
+}
+.main-webcam{
+    border: 2px solid blueviolet;
+    border-radius: 16px;
+    width:500px;
+    height: 350px;
+}
+.main-graph{
+    margin-top: 20px;
+    border: 2px solid blueviolet;
+    border-radius: 16px;
+    width:500px;
+    height: 230px;
+}
+
+
+.main-feedback-container {
+    display: flex;
+    flex-direction: column;
+    width:25%;
+    height: 600px;
+    background-color:white;
+    border: 3px solid #4343c9;
+    border-radius: 16px;
+    padding:20px;
+}
+.main-active-button-container{
+    display: flex;
+    justify-content: space-around;
+    margin:10px 0 20px;
+}
+.main-cam-on, .main-cam-off {
+    width:100px;
+    padding:10px 4px; 
+    border-radius: 16px;
+    margin-right: 4px;
+}
+.main-cam-on{
+    background-color: #4343c9;
+    color: white;
+}
+
+.main-set-pose {
+    background-color: #7676c0;
+    border-radius:16px;
+    width:100px;
+    padding:10px 4px;
+    color: white;
+    font-weight: 900;
+    margin-left: 4px;
+}
+
+.poseset-active{
+    background-color: #4343c9;
+}
+.main-score-container{
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.main-score{
+    font-size: 5rem;
+    color: brown;
+}
