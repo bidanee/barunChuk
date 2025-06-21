@@ -34,3 +34,36 @@ canvas{
     justify-content: center;
     color: white;
 }
+/* PoseLandmarkerComponents.css 에 추가 */
+.alert-modal {
+    position: fixed; /* canvas가 아닌 전체 화면 기준 */
+    top: 0; left: 0;
+    width: 100vw; 
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+.modal-content {
+    background-color: white;
+    padding: 2rem 3rem;
+    border-radius: 8px;
+    text-align: center;
+    color: #333;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+.modal-content > h3 {
+    margin-top: 0;
+}
+.modal-content > button {
+    margin-top: 1rem;
+    padding: 10px 25px;
+    border-radius: 8px;
+    border: none;
+    background-color: #4343c9;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
