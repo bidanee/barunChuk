@@ -4,15 +4,10 @@ FROM python:3.11-slim-buster
 ENV PYTHONUNBUFFERED 1
 
 # 필요한 시스템 패키지 설치
-# MediaPipe/OpenCV가 의존하는 gstreamer 관련 라이브러리 및 기타 종속성 설치
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
     libgstreamer-plugins-base1.0-0 \
     libgstreamer1.0-0 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
