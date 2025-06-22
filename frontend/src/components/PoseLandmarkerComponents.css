@@ -34,9 +34,9 @@ canvas{
     justify-content: center;
     color: white;
 }
-/* PoseLandmarkerComponents.css 에 추가 */
+
 .alert-modal {
-    position: fixed; /* canvas가 아닌 전체 화면 기준 */
+    position: fixed; 
     top: 0; left: 0;
     width: 100vw; 
     height: 100vh;
