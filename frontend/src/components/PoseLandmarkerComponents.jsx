@@ -3,7 +3,7 @@ import Webcam from "react-webcam";
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import './PoseLandmarkerComponents.css';
 import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2 } from "../utils/calculatePostureScore";
-import poseModel from '../models/pose_landmarker_full.task';
+import poseModel from '../models/pose_landmarker_full.task?url';
 
 
 const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger }) => {
