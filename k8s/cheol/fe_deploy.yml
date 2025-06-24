@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fe-barunchuk-app-deployment
+  labels:
+    app: fe-front
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fe-front
+  template:
+    metadata:
+      labels:
+        app: fe-front
+    spec:
+      containers:
+      - name: fe-front
+        image: pcheol/barunchuck-frontend:latest
+        ports:
+        - containerPort: 3000

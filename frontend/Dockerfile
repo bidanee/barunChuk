@@ -1,20 +1,13 @@
-# FROM node:18
-# WORKDIR /app
-# COPY package*.json ./
-# RUN npm install
-# COPY . .
-# EXPOSE 3000
-# CMD ["npm", "start"]
-
-# frontend/Dockerfile
 FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install 
+RUN npm install && npm install -g serve
 
 COPY . .
 
+RUN npm run build
+
 EXPOSE 3001
-CMD ["npm", "start"] 
+CMD ["serve", "-s", "dist", "-l", "3001"]

@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: barunchuk-app-deployment
+  labels:
+    app: bi-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: bi-frontend
+  template:
+    metadata:
+      labels:
+        app: bi-frontend
+    spec:
+      containers:
+      - name: bi-frontend
+        image: bidanee/barunchuk-frontend:latest
+        ports:
+        - containerPort: 3001
