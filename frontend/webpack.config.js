@@ -15,7 +15,7 @@ module.exports = {
   },
   // 모듈 해석 방식 설정
   resolve: {
-    extensions: ['.js', '.jsx'] // .js와 .jsx 파일을 모듈로 인식
+    extensions: ['.js', '.jsx','.task'] // .js와 .jsx 파일을 모듈로 인식
   },
   // 모듈 처리 규칙 정의
   module: {
