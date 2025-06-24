@@ -9,14 +9,13 @@ module.exports = {
   entry: './src/index.jsx',
   // 번들된 파일이 출력될 경로와 파일명
   output: {
-  path: path.resolve(__dirname, 'dist'),
-  filename: 'bundle.js',
-  publicPath: './', // ✅ 이거 추가해봐
-  clean: true
-},
+    path: path.resolve(__dirname, 'dist'), // 빌드 결과물이 저장될 경로 (이 경로가 호스트에 생성됩니다)
+    filename: 'bundle.js',
+    clean: true // 이전 빌드 결과물 삭제
+  },
   // 모듈 해석 방식 설정
   resolve: {
-    extensions: ['.js', '.jsx','.task'] // .js와 .jsx 파일을 모듈로 인식
+    extensions: ['.js', '.jsx'] // .js와 .jsx 파일을 모듈로 인식
   },
   // 모듈 처리 규칙 정의
   module: {
