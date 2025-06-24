@@ -3,6 +3,8 @@ import Webcam from "react-webcam";
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import './PoseLandmarkerComponents.css';
 import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2 } from "../utils/calculatePostureScore";
+import poseModel from '../models/pose_landmarker_full.task';
+
 
 const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger }) => {
     const webcamRef = useRef(null);
@@ -28,7 +30,7 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             poseLandmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: "/models/pose_landmarker_full.task",
+                    modelAssetPath: poseModel,
                     delegate: 'GPU'
                 },
                 runningMode: "VIDEO",
