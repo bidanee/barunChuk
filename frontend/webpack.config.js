@@ -44,7 +44,7 @@ module.exports = {
         test: /\.task$/,
         type: 'asset/resource', // asset 모듈 타입으로 처리하여 파일 경로를 반환
         generator: {
-          filename: 'public/[name][ext]' 
+          filename: 'static/[name][ext]' // public 폴더 구조를 유지하며 dist/static/ 에 복사
         }
       }
     ]
