@@ -71,34 +71,114 @@ export class PoseSmoother {
     }
 }
 
-// --- 아래 코드들은 이전 버전과 동일하게 유지합니다. ---
 
 const ALLOWED_DEVIATION = {
-    turtleNeck: { diff: 1, severityMultiplier: 100 },
-    shoulderTilt: { diff: 3, severityMultiplier: 4 },
-    headTilt: { diff: 5, severityMultiplier: 3.5 },
-    shoulderTwist: { diff: 1, severityMultiplier: 100 },
-    headBow: { threshold: 0.1, severityMultiplier: 200 },
+    turtleNeck: { diff: 2, severityMultiplier: 30 },
+    shoulderTilt: { diff: 2, severityMultiplier: 30 },
+    headTilt: { diff: 2, severityMultiplier: 30 },
+    shoulderTwist: { diff: 2, severityMultiplier: 30 },
+    headBow: { threshold: 2, severityMultiplier: 30 },
 };
 
 const FEEDBACKS_RELATIVE = {
-    REF_OK:"지금 자세 그대로! 아주 좋습니다.",
-    REF_TURTLE_FORWARD: (cm) => `기준 자세보다 목이 약 ${cm}cm 앞으로 나왔어요.`,
-    REF_TURTLE_BACK: "기준 자세보다 목이 너무 뒤로 갔어요. 긴장을 풀어주세요.",
-    REF_SHOULDER_TILT: "기준 자세보다 어깨가 기울어졌어요.",
-    REF_HEAD_TILT: "기준 자세보다 머리가 기울어졌어요.",
-    REF_SHOULDER_TWIST: "기준 자세보다 몸이 틀어져 있어요. 정면을 봐주세요.",
-    REF_HEAD_BOW: "고개를 너무 숙이고 있어요. 화면을 봐주세요!",
+    REF_OK: "✅ 지금 자세 그대로~~ 아주 좋습니다!",
+    REF_TURTLE_FORWARD: (cm) => `🐢 기준 자세보다 목이 약 ${cm}cm 앞으로 나왔어요.`,
+    REF_TURTLE_BACK: "🐢 목이 너무 뒤로 갔어요~ 긴장을 풀어주세요.",
+
+    REF_SHOULDER_TILT: "📐 어깨가 기울어졌어요.",
+    REF_SHOULDER_TILT_LEFT: "📉 오른쪽 어깨가 내려갔어요.",
+    REF_SHOULDER_TILT_RIGHT: "📈 왼쪽 어깨가 내려갔어요.",
+
+    REF_HEAD_TILT_LEFT: "🤕 머리가 오른쪽으로 기울어졌어요.",
+    REF_HEAD_TILT_RIGHT: "🤕 머리가 왼쪽으로 기울어졌어요.",
+    REF_HEAD_TILT: "🤕 머리가 기울어졌어요.",
+
+    REF_SHOULDER_TWIST: "🔄 몸이 틀어져 있어요 ㅜㅜ 정면을 봐주세요.",
+    
+    REF_HEAD_BOW: "📉 고개를 너무 숙이고 있어요 화면을 봐주세요!",
 };
 
+// export const analyzePoseV2 = (currentMetrics, referenceMetrics) => {
+//     if (!currentMetrics || !referenceMetrics || !currentMetrics.pixelsPerCm) {
+//         return { score: null, feedback: "기준 자세를 분석 중입니다..." };
+//     }
+    
+//     let score = 100;
+//     const problems = [];
+    
+//     const diffs = {
+//         turtleNeck: currentMetrics.normalizedHeadForwardOffset - referenceMetrics.normalizedHeadForwardOffset,
+//         shoulderTilt: currentMetrics.shoulderTiltAngle - referenceMetrics.shoulderTiltAngle,
+//         headTilt: currentMetrics.headTiltAngle - referenceMetrics.headTiltAngle,
+//         shoulderTwist: currentMetrics.shoulderTwistRatio - referenceMetrics.shoulderTwistRatio,
+//     };
+
+//     const checkProblem = (diff, guide, type, feedbackFn) => {
+//         if (Math.abs(diff) > guide.diff) {
+//             const severity = Math.min(1, Math.abs(diff) / (guide.diff * 5));
+//             problems.push({ type, severity, feedbackFn });
+//         }
+//     };
+
+//     const checkHeadBow = (currentRatio, referenceRatio, guide) => {
+//         const diff = currentRatio - referenceRatio;
+//         if (diff < -guide.threshold) {
+//             const severity = Math.min(1, Math.abs(diff) / (guide.threshold * 3));
+//             problems.push({ type: 'headBow', severity, feedbackFn: () => FEEDBACKS_RELATIVE.REF_HEAD_BOW });
+//         }
+//     };
+    
+//     const headOffsetCm = Math.abs(diffs.turtleNeck * currentMetrics.shoulderWidth / currentMetrics.pixelsPerCm).toFixed(1);
+//     checkProblem(diffs.turtleNeck, ALLOWED_DEVIATION.turtleNeck, 'turtleNeck', diffs.turtleNeck > 0 ? () => FEEDBACKS_RELATIVE.REF_TURTLE_FORWARD(headOffsetCm) : () => FEEDBACKS_RELATIVE.REF_TURTLE_BACK);
+//     checkProblem(diffs.shoulderTilt, ALLOWED_DEVIATION.shoulderTilt, 'shoulderTilt', () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT);
+//     checkProblem(diffs.headTilt, ALLOWED_DEVIATION.headTilt, 'headTilt', () => FEEDBACKS_RELATIVE.REF_HEAD_TILT);
+//     checkProblem(diffs.shoulderTwist, ALLOWED_DEVIATION.shoulderTwist, 'shoulderTwist', () => FEEDBACKS_RELATIVE.REF_SHOULDER_TWIST);
+//     checkHeadBow(currentMetrics.headBowRatio, referenceMetrics.headBowRatio, ALLOWED_DEVIATION.headBow);
+
+//     problems.sort((a, b) => b.severity - a.severity);
+
+//     if (problems.length > 0) {
+//         problems.forEach(p => {
+//             const guide = ALLOWED_DEVIATION[p.type];
+//             if (guide) {
+//                 score -= p.severity * guide.severityMultiplier;
+//             }
+//         });
+//     }
+
+//     const feedback = problems.length > 0
+//         ? problems.map(p => p.feedbackFn()).join(' ')
+//         : FEEDBACKS_RELATIVE.REF_OK;
+// const checkProblemWithDirection = (diff, guide, type, feedbackLeftFn, feedbackRightFn) => {
+//     if (Math.abs(diff) > guide.diff) {
+//         const severity = Math.min(1, Math.abs(diff) / (guide.diff * 5));
+//         const feedbackFn = diff > 0 ? feedbackRightFn : feedbackLeftFn;
+//         problems.push({ type, severity, feedbackFn });
+//     }
+// };
+
+// checkProblemWithDirection(diffs.shoulderTilt, ALLOWED_DEVIATION.shoulderTilt, 'shoulderTilt',
+//     () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT_LEFT,
+//     () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT_RIGHT
+// );
+
+// checkProblemWithDirection(diffs.headTilt, ALLOWED_DEVIATION.headTilt, 'headTilt',
+//     () => FEEDBACKS_RELATIVE.REF_HEAD_TILT_LEFT,
+//     () => FEEDBACKS_RELATIVE.REF_HEAD_TILT_RIGHT
+// );
+//     return { score: Math.max(0, Math.round(score)), feedback };
+// };
+
+
+// [신규 기능] 기준 자세로 삼기에 적절한지 검증하기 위한 '절대 최소 기준'
 export const analyzePoseV2 = (currentMetrics, referenceMetrics) => {
     if (!currentMetrics || !referenceMetrics || !currentMetrics.pixelsPerCm) {
         return { score: null, feedback: "기준 자세를 분석 중입니다..." };
     }
-    
+
     let score = 100;
     const problems = [];
-    
+
     const diffs = {
         turtleNeck: currentMetrics.normalizedHeadForwardOffset - referenceMetrics.normalizedHeadForwardOffset,
         shoulderTilt: currentMetrics.shoulderTiltAngle - referenceMetrics.shoulderTiltAngle,
@@ -106,9 +186,20 @@ export const analyzePoseV2 = (currentMetrics, referenceMetrics) => {
         shoulderTwist: currentMetrics.shoulderTwistRatio - referenceMetrics.shoulderTwistRatio,
     };
 
+    const headOffsetCm = Math.abs(diffs.turtleNeck * currentMetrics.shoulderWidth / currentMetrics.pixelsPerCm).toFixed(1);
+
     const checkProblem = (diff, guide, type, feedbackFn) => {
         if (Math.abs(diff) > guide.diff) {
             const severity = Math.min(1, Math.abs(diff) / (guide.diff * 5));
+            problems.push({ type, severity, feedbackFn });
+        }
+    };
+
+    // 🆕 방향까지 고려하는 함수
+    const checkProblemWithDirection = (diff, guide, type, feedbackLeftFn, feedbackRightFn) => {
+        if (Math.abs(diff) > guide.diff) {
+            const severity = Math.min(1, Math.abs(diff) / (guide.diff * 5));
+            const feedbackFn = diff > 0 ? feedbackRightFn : feedbackLeftFn;
             problems.push({ type, severity, feedbackFn });
         }
     };
@@ -120,12 +211,39 @@ export const analyzePoseV2 = (currentMetrics, referenceMetrics) => {
             problems.push({ type: 'headBow', severity, feedbackFn: () => FEEDBACKS_RELATIVE.REF_HEAD_BOW });
         }
     };
-    
-    const headOffsetCm = Math.abs(diffs.turtleNeck * currentMetrics.shoulderWidth / currentMetrics.pixelsPerCm).toFixed(1);
-    checkProblem(diffs.turtleNeck, ALLOWED_DEVIATION.turtleNeck, 'turtleNeck', diffs.turtleNeck > 0 ? () => FEEDBACKS_RELATIVE.REF_TURTLE_FORWARD(headOffsetCm) : () => FEEDBACKS_RELATIVE.REF_TURTLE_BACK);
-    checkProblem(diffs.shoulderTilt, ALLOWED_DEVIATION.shoulderTilt, 'shoulderTilt', () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT);
-    checkProblem(diffs.headTilt, ALLOWED_DEVIATION.headTilt, 'headTilt', () => FEEDBACKS_RELATIVE.REF_HEAD_TILT);
-    checkProblem(diffs.shoulderTwist, ALLOWED_DEVIATION.shoulderTwist, 'shoulderTwist', () => FEEDBACKS_RELATIVE.REF_SHOULDER_TWIST);
+
+    checkProblem(
+        diffs.turtleNeck,
+        ALLOWED_DEVIATION.turtleNeck,
+        'turtleNeck',
+        diffs.turtleNeck > 0
+            ? () => FEEDBACKS_RELATIVE.REF_TURTLE_FORWARD(headOffsetCm)
+            : () => FEEDBACKS_RELATIVE.REF_TURTLE_BACK
+    );
+
+    checkProblemWithDirection(
+        diffs.shoulderTilt,
+        ALLOWED_DEVIATION.shoulderTilt,
+        'shoulderTilt',
+        () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT_LEFT,
+        () => FEEDBACKS_RELATIVE.REF_SHOULDER_TILT_RIGHT
+    );
+
+    checkProblemWithDirection(
+        diffs.headTilt,
+        ALLOWED_DEVIATION.headTilt,
+        'headTilt',
+        () => FEEDBACKS_RELATIVE.REF_HEAD_TILT_LEFT,
+        () => FEEDBACKS_RELATIVE.REF_HEAD_TILT_RIGHT
+    );
+
+    checkProblem(
+        diffs.shoulderTwist,
+        ALLOWED_DEVIATION.shoulderTwist,
+        'shoulderTwist',
+        () => FEEDBACKS_RELATIVE.REF_SHOULDER_TWIST
+    );
+
     checkHeadBow(currentMetrics.headBowRatio, referenceMetrics.headBowRatio, ALLOWED_DEVIATION.headBow);
 
     problems.sort((a, b) => b.severity - a.severity);
@@ -139,18 +257,18 @@ export const analyzePoseV2 = (currentMetrics, referenceMetrics) => {
         });
     }
 
-    const feedback = problems.length > 0 ? problems[0].feedbackFn() : FEEDBACKS_RELATIVE.REF_OK;
-    
+    const feedback = problems.length > 0
+        ? problems.map(p => p.feedbackFn()).join(' ')
+        : FEEDBACKS_RELATIVE.REF_OK;
+
     return { score: Math.max(0, Math.round(score)), feedback };
 };
 
-
-// [신규 기능] 기준 자세로 삼기에 적절한지 검증하기 위한 '절대 최소 기준'
 const ABSOLUTE_POSE_STANDARDS = {
-    maxShoulderTilt: 8,  // 어깨 기울기는 8도를 넘으면 안 됨
-    maxHeadTilt: 8,      // 머리 기울기도 8도를 넘으면 안 됨
-    maxHeadForward: 0.2, // 거북목 지수가 0.2를 넘으면(심한 거북목) 안 됨
-    maxShoulderTwist: 0.15,// 몸 틀어짐이 0.15를 넘으면 안 됨
+    maxShoulderTilt: 10,  // 어깨 기울기는 8도를 넘으면 안 됨
+    maxHeadTilt: 10,      // 머리 기울기도 8도를 넘으면 안 됨
+    maxHeadForward: 1, // 거북목 지수가 0.2를 넘으면(심한 거북목) 안 됨
+    maxShoulderTwist:0.15,// 몸 틀어짐이 0.15를 넘으면 안 됨
 };
 
 // [신규 기능] 기준 자세를 검증하고 결과를 반환하는 함수

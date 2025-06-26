@@ -1,13 +1,19 @@
 *{
     box-sizing: border-box;
+    box-shadow:none;
 }
 
 body{
     margin:0;
     padding:0;
     background-color: #f5f6fa;
+      font-family: 'Roboto', sans-serif;
 }
-
+button {
+  /* all: unset; 모든 기본 스타일 제거 */
+  border: 1px solid black;
+  text-align: center;
+}
 .wrapper{
  display: flex;
  flex-direction: column;

@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Webcam from "react-webcam";
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
 import './PoseLandmarkerComponents.css';
-import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2 } from "../utils/calculatePostureScore";
+import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2, validateReferencePose } from "../utils/calculatePostureScore";
+import AlertModal from "./AlertModal"
 
-const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger }) => {
+const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger,onModelLoaded }) => {
     const webcamRef = useRef(null);
     const canvasRef = useRef(null);
     const poseLandmarkerRef = useRef(null);
@@ -18,6 +19,9 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
     const badPostureTimerRef = useRef(null);
     const BAD_POSTURE_THRESHOLD = 50;
     const ALERT_DELAY = 5000;
+    const [referenceFailMessage, setReferenceFailMessage] = useState(null);
+    const [referenceSuccessMessage, setReferenceSuccessMessage] = useState(null);
+
 
     // MediaPipe 모델 설정
     const setupMediaPipe = useCallback(async () => {
@@ -138,12 +142,30 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
         if (captureTrigger > 0) {
             const smoothedMetrics = smoothRef.current.getSmoothedMetrics();
             if (smoothedMetrics) {
-                referencePoseRef.current = smoothedMetrics;
-                onFeedbackUpdate("기준 자세가 설정되었습니다! 이제부터 자세를 분석합니다.");
+                const result = validateReferencePose(smoothedMetrics);
+                if (result.isValid) {
+                    referencePoseRef.current = smoothedMetrics;
+                    onFeedbackUpdate(result.message);
+                    setReferenceFailMessage(null); // 실패 메시지 초기화
+                    setReferenceSuccessMessage(result.message); // ✅ 성공 메시지 설정
+                } else {
+                    onFeedbackUpdate(result.message); // 텍스트 피드백도 주고
+                    setReferenceFailMessage(result.message); // ❗ 모달용 메시지 저장
+                }
+            } else {
+                const fallbackMsg = "기준 자세 설정 실패: AI가 아직 자세를 충분히 인식하지 못했어요.";
+                onFeedbackUpdate(fallbackMsg);
+                setReferenceFailMessage(fallbackMsg); // 이 경우도 모달 열기 가능
             }
         }
     }, [captureTrigger, onFeedbackUpdate]);
 
+
+    useEffect(() => {
+  if (isLoading === false && poseLandmarkerRef.current) {
+    onModelLoaded(true); // ✅ Main에 모델 로딩 완료 알림
+  }
+}, [isLoading]);
 
     return (
         <div className='pose-container'>
@@ -163,16 +185,28 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
                 </div>
             )}
             {isAlertModalOpen && (
-                <div className="alert-modal">
-                    <div className="modal-content">
-                        <h3>자세가 흐트러졌어요!</h3>
-                        <p>스트레칭 한번 하고 다시 바른 자세를 유지해 주세요.</p>
-                        <button onClick={() => setAlertModalOpen(false)}>확인</button>
-                    </div>
-                </div>
+                <AlertModal
+                    title="자세가 흐트러졌어요!"
+                    message="스트레칭 한번 하고 다시 바른 자세를 유지해 주세요."
+                    onClose={() => setAlertModalOpen(false)}
+                />
+            )}
+            {referenceFailMessage && (
+                <AlertModal
+                    title="기준 자세 설정 실패"
+                    message={referenceFailMessage}  // ✅ 문자열 메시지
+                    onClose={() => setReferenceFailMessage(null)} // ✅ 닫기 시 메시지 초기화
+                />
+            )}
+            {referenceSuccessMessage && (
+                <AlertModal
+                    title="기준 자세 설정 완료"
+                    message={referenceSuccessMessage}
+                    onClose={() => setReferenceSuccessMessage(null)}
+                />
             )}
         </div>
     );
 }
 
-export default PoseLandmarkerComponents;
+export default PoseLandmarkerComponents

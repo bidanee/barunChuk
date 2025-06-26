@@ -30,18 +30,33 @@
     width:500px;
     height: 350px;
 }
-.main-graph{
+.main-feedback{
+    display:flex;
+    justify-content: center;
+    align-items: center;
     margin-top: 20px;
     border: 2px solid blueviolet;
     border-radius: 16px;
     width:500px;
     height: 230px;
+    padding:20px 0;
 }
+
+.feedback{
+    font-size: large;
+    font-weight: 400;
+}
+
+.feedback div{
+    margin-bottom: 30px;
+}
+
 
 
 .main-feedback-container {
     display: flex;
     flex-direction: column;
+    justify-content: center;
     width:25%;
     height: 600px;
     background-color:white;
@@ -83,9 +98,10 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    margin-bottom: 20px;
+    margin-top:10px
 }
 .main-score{
     font-size: 5rem;
-    color: brown;
+    color: #4343c9;
+    margin: 0;
 }
