@@ -4,6 +4,7 @@ import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-
 import './PoseLandmarkerComponents.css';
 import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2, validateReferencePose } from "../utils/calculatePostureScore";
 import AlertModal from "./AlertModal"
+import posemodel from "../models/pose_landmarker_full.task"
 
 const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger,onModelLoaded }) => {
     const webcamRef = useRef(null);
@@ -32,7 +33,7 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
             poseLandmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: "/models/pose_landmarker_full.task",
+                    modelAssetPath: posemodel,
                     delegate: 'GPU'
                 },
                 runningMode: "VIDEO",
