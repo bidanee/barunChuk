@@ -6,7 +6,7 @@ import { calculateAdvancedMetrics, PoseSmoother, analyzePoseV2, validateReferenc
 import AlertModal from "./AlertModal"
 import posemodel from "../models/pose_landmarker_full.task"
 
-const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger,onModelLoaded }) => {
+const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, captureTrigger, onModelLoaded, onReferencePoseSet, onResetFromMain }) => {
     const webcamRef = useRef(null);
     const canvasRef = useRef(null);
     const poseLandmarkerRef = useRef(null);
@@ -20,9 +20,7 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
     const badPostureTimerRef = useRef(null);
     const BAD_POSTURE_THRESHOLD = 50;
     const ALERT_DELAY = 5000;
-    const [referenceFailMessage, setReferenceFailMessage] = useState(null);
-    const [referenceSuccessMessage, setReferenceSuccessMessage] = useState(null);
-
+    const [referenceResultMessage, setReferenceResultMessage] = useState(null); // 단일 상태로 모달 메시지 관리
 
     // MediaPipe 모델 설정
     const setupMediaPipe = useCallback(async () => {
@@ -51,11 +49,12 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
         }
     }, [isLoading]);
 
+    // 웹캠에서 포즈 감지 및 스코어 업데이트
     const predictWebcam = useCallback(() => {
         if (isLoading || !isActive || !poseLandmarkerRef.current || !webcamRef.current?.video || !canvasRef.current) {
             return;
         }
-        
+
         const video = webcamRef.current.video;
         if (video.readyState < 2) {
             requestRef.current = requestAnimationFrame(predictWebcam);
@@ -70,20 +69,20 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
         canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.height = video.videoHeight; // ✅ 이 부분을 video.videoHeight로 올바르게 수정합니다.
         context.clearRect(0, 0, canvas.width, canvas.height);
 
         if (results.landmarks && results.landmarks.length > 0) {
             const landmarks = results.landmarks[0];
             const rawMetrics = calculateAdvancedMetrics(landmarks);
-            
+
             if (rawMetrics) {
                 smoothRef.current.addMetrics(rawMetrics);
                 const smoothedMetrics = smoothRef.current.getSmoothedMetrics();
-                
+
                 if (referencePoseRef.current && smoothedMetrics) {
                     const { score, feedback } = analyzePoseV2(smoothedMetrics, referencePoseRef.current);
-                    
+
                     onScoreUpdate(score);
                     onFeedbackUpdate(feedback);
 
@@ -97,7 +96,7 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
                         badPostureTimerRef.current = null;
                     }
                 } else {
-                    onScoreUpdate(null); 
+                    onScoreUpdate(null);
                     onFeedbackUpdate("웹캠을 보고 바른 자세를 취한 후, '기준 자세 설정' 버튼을 눌러주세요.");
                 }
             }
@@ -111,11 +110,13 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
              if (!referencePoseRef.current) {
                 onScoreUpdate(null);
                 onFeedbackUpdate("카메라에 상반신이 잘 보이도록 앉아주세요.");
-             }            
+             }
         }
-        
+
         requestRef.current = requestAnimationFrame(predictWebcam);
     }, [isActive, isLoading, onScoreUpdate, onFeedbackUpdate]);
+
+    // 카메라 활성화/비활성화 시 모델 및 상태 관리
     useEffect(() => {
         if (isActive) {
             console.log("CAM ON: MediaPipe 설정 시작");
@@ -123,13 +124,22 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
         } else {
             console.log("CAM OFF");
             poseLandmarkerRef.current?.close();
-            poseLandmarkerRef.current = null;
+            poseLandmarkerRef.current = null; // ✅ 오타 수정: LandmarkerRef -> poseLandmarkerRef
             drawingUtilsRef.current = null;
             cancelAnimationFrame(requestRef.current);
             requestRef.current = null;
+            // 카메라가 꺼지면 모든 관련 상태 초기화
+            referencePoseRef.current = null; // 기준 자세도 초기화
+            smoothRef.current = new PoseSmoother(15); // 스무더도 초기화
+            setReferenceResultMessage(null); // 모달 메시지 초기화
+            setAlertModalOpen(false); // 경고 모달도 초기화
+            clearTimeout(badPostureTimerRef.current); // 타이머도 초기화
+            badPostureTimerRef.current = null;
+            onReferencePoseSet(false); // Main 컴포넌트에 기준 자세가 해제되었음을 알림
         }
-    }, [isActive, setupMediaPipe]);
+    }, [isActive, setupMediaPipe, onReferencePoseSet]);
 
+    // 애니메이션 프레임 요청 관리
     useEffect(() => {
         if (isActive && !isLoading && poseLandmarkerRef.current) {
             requestRef.current = requestAnimationFrame(predictWebcam);
@@ -139,41 +149,59 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
         }
     }, [isActive, isLoading, predictWebcam]);
 
+    // '기준 자세 설정' 버튼 클릭 (captureTrigger 변경) 시 동작
     useEffect(() => {
         if (captureTrigger > 0) {
+            setReferenceResultMessage(null); // 새로운 시도 전에 기존 모달 메시지 초기화
+
             const smoothedMetrics = smoothRef.current.getSmoothedMetrics();
             if (smoothedMetrics) {
                 const result = validateReferencePose(smoothedMetrics);
                 if (result.isValid) {
                     referencePoseRef.current = smoothedMetrics;
                     onFeedbackUpdate(result.message);
-                    setReferenceFailMessage(null); // 실패 메시지 초기화
-                    setReferenceSuccessMessage(result.message); // ✅ 성공 메시지 설정
+                    setReferenceResultMessage({ title: "기준 자세 설정 완료", message: result.message });
+                    onReferencePoseSet(true); // Main에 기준 자세 설정 성공 알림
                 } else {
-                    onFeedbackUpdate(result.message); // 텍스트 피드백도 주고
-                    setReferenceFailMessage(result.message); // ❗ 모달용 메시지 저장
+                    onFeedbackUpdate(result.message);
+                    setReferenceResultMessage({ title: "기준 자세 설정 실패", message: result.message });
+                    onReferencePoseSet(false); // Main에 기준 자세 설정 실패 알림
                 }
             } else {
                 const fallbackMsg = "기준 자세 설정 실패: AI가 아직 자세를 충분히 인식하지 못했어요.";
                 onFeedbackUpdate(fallbackMsg);
-                setReferenceFailMessage(fallbackMsg); // 이 경우도 모달 열기 가능
+                setReferenceResultMessage({ title: "기준 자세 설정 실패", message: fallbackMsg });
+                onReferencePoseSet(false); // Main에 기준 자세 설정 실패 알림
             }
         }
-    }, [captureTrigger, onFeedbackUpdate]);
+    }, [captureTrigger, onFeedbackUpdate, onReferencePoseSet]);
 
-
+    // Main 컴포넌트로부터 리셋 신호를 받을 때 동작 (onResetFromMain이 변경될 때마다)
     useEffect(() => {
-  if (isLoading === false && poseLandmarkerRef.current) {
-    onModelLoaded(true); // ✅ Main에 모델 로딩 완료 알림
-  }
-}, [isLoading]);
+        if (onResetFromMain > 0) {
+            console.log("PoseLandmarkerComponents: Resetting all states due to Main's reset trigger.");
+            referencePoseRef.current = null; // 기준 자세 초기화
+            smoothRef.current = new PoseSmoother(15); // 스무더 초기화
+            setReferenceResultMessage(null); // 모달 메시지 초기화
+            setAlertModalOpen(false); // 경고 모달 초기화
+            clearTimeout(badPostureTimerRef.current); // 타이머 초기화
+            badPostureTimerRef.current = null;
+        }
+    }, [onResetFromMain]);
+
+    // 모델 로딩 완료 시 Main 컴포넌트에 알림
+    useEffect(() => {
+        if (isLoading === false && poseLandmarkerRef.current) {
+            onModelLoaded(true);
+        }
+    }, [isLoading, onModelLoaded]);
 
     return (
         <div className='pose-container'>
             {loadError && <div className="pose-webcam-off"><p style={{color: 'red'}}>{loadError}</p></div>}
             {isLoading && <div className="pose-webcam-off"><p>AI 모델을 불러오는 중입니다...</p></div>}
             {!isLoading && !isActive && <div className="pose-webcam-off"><p>카메라가 꺼져 있습니다.</p></div>}
-            
+
             {isActive && (
                 <div style={{ visibility: isLoading || loadError ? 'hidden' : 'visible' }}>
                     <Webcam
@@ -185,6 +213,7 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
                     <canvas ref={canvasRef} />
                 </div>
             )}
+            {/* 나쁜 자세 알림 모달 */}
             {isAlertModalOpen && (
                 <AlertModal
                     title="자세가 흐트러졌어요!"
@@ -192,22 +221,16 @@ const PoseLandmarkerComponents = ({ isActive, onScoreUpdate, onFeedbackUpdate, c
                     onClose={() => setAlertModalOpen(false)}
                 />
             )}
-            {referenceFailMessage && (
+            {/* 기준 자세 설정 결과 모달 (성공/실패 공용) */}
+            {referenceResultMessage && (
                 <AlertModal
-                    title="기준 자세 설정 실패"
-                    message={referenceFailMessage}  // ✅ 문자열 메시지
-                    onClose={() => setReferenceFailMessage(null)} // ✅ 닫기 시 메시지 초기화
-                />
-            )}
-            {referenceSuccessMessage && (
-                <AlertModal
-                    title="기준 자세 설정 완료"
-                    message={referenceSuccessMessage}
-                    onClose={() => setReferenceSuccessMessage(null)}
+                    title={referenceResultMessage.title}
+                    message={referenceResultMessage.message}
+                    onClose={() => setReferenceResultMessage(null)}
                 />
             )}
         </div>
     );
 }
 
-export default PoseLandmarkerComponents
+export default PoseLandmarkerComponents;
