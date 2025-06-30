@@ -1,19 +1,18 @@
-# barunChuk/.github/workflows/main.yaml
-name: BarunChuk CI/CD Pipeline # 워크플로우 이름
+name: BarunChuk CI/CD Pipeline 
 
 on:
   push:
     branches:
-      - main # main 브랜치에 푸시될 때 워크플로우 실행
+      - main 
   workflow_dispatch: # GitHub UI에서 수동 실행 허용
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest # GitHub Actions 러너 환경
+    runs-on: ubuntu-latest 
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # 레포지토리 코드 체크아웃
+        uses: actions/checkout@v4 
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -24,37 +23,33 @@ jobs:
       - name: Set up Docker BuildX
         uses: docker/setup-buildx-action@v3
 
-      # --- Frontend (React) Docker 이미지 빌드 및 푸시 ---
       - name: Build and push Frontend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend # frontend 폴더가 Docker 빌드 컨텍스트
-          file: ./frontend/Dockerfile # frontend/Dockerfile 사용
+          context: ./frontend 
+          file: ./frontend/Dockerfile 
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-frontend:latest # 이미지 태그
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-frontend:latest 
           platforms: linux/amd64
 
-      # --- Backend Node.js Server Docker 이미지 빌드 및 푸시 ---
       - name: Build and push Node.js Backend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend/server # backend/server 폴더가 Docker 빌드 컨텍스트
-          file: ./backend/server/Dockerfile # backend/server/Dockerfile 사용
+          context: ./backend/server 
+          file: ./backend/server/Dockerfile 
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-node:latest # 이미지 태그
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-node:latest 
           platforms: linux/amd64
 
-      # --- Backend FastAPI (Python) Server Docker 이미지 빌드 및 푸시 ---
       - name: Build and push FastAPI Backend Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend/fastapi # backend/fastapi 폴더가 Docker 빌드 컨텍스트
-          file: ./backend/fastapi/Dockerfile # backend/fastapi/Dockerfile 사용
+          context: ./backend/fastapi 
+          file: ./backend/fastapi/Dockerfile 
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-python:latest # 이미지 태그
+          tags: ${{ secrets.DOCKER_USERNAME }}/barunchuk-backend-python:latest 
           platforms: linux/amd64
 
-      # --- Deploy to EC2 ---
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.1 
         with:
