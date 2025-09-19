@@ -9,7 +9,7 @@ module.exports = {
   entry: './src/index.jsx',
   // 번들된 파일이 출력될 경로와 파일명
   output: {
-    path: path.resolve(__dirname, 'dist'), // 빌드 결과물이 저장될 경로 (이 경로가 호스트에 생성됩니다)
+    path: path.resolve(__dirname, 'dist'), // 빌드 결과물이 저장될 경로
     filename: 'bundle.js',
     clean: true // 이전 빌드 결과물 삭제
   },
@@ -59,7 +59,7 @@ module.exports = {
   devServer: {
     host: '0.0.0.0', // 모든 네트워크 인터페이스에서 접근 허용
     port: 3001, // React 개발 서버의 노출 포트
-    // static 설정을 배열로 변경하여 public과 dist 폴더 모두를 서빙합니다.
+    // static 설정을 배열로 변경하여 public과 dist 폴더 모두 서빙
     static: [
       { directory: path.join(__dirname, 'public') }, // 기존 public 폴더
       { directory: path.join(__dirname, 'dist') }    // Webpack 빌드 결과물 (assets) 폴더 추가
@@ -67,7 +67,7 @@ module.exports = {
     open: true, // 서버 시작 시 브라우저 자동 열기
     historyApiFallback: true, // SPA (Single Page Application) 라우팅을 위한 설정
     devMiddleware: {
-      writeToDisk: true // ⭐⭐ 개발 중에도 빌드 결과물을 디스크(./dist)에 씁니다.
+      writeToDisk: true // 발 중에도 빌드 결과물을 디스크(./dist)에 씀
     },
     watchFiles: {
       paths: ['src/**/*', 'public/**/*'], // 감지할 파일/폴더 명시
@@ -84,7 +84,7 @@ module.exports = {
         hostname: 'barunchuk.5team.store',
         protocol: 'wss', // HTTPS/WSS 프로토콜
         port: 443,       // ALB 리스너의 포트
-        pathname: '/ws'  // webpack-dev-server의 기본 경로가 /ws이므로 맞춰줍니다.
+        pathname: '/ws'  // webpack-dev-server의 기본 경로가 /ws
       }
     }
   }
