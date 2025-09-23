@@ -60,8 +60,8 @@ jobs:
           script: |
             # EC2 서버에 로그인 후 실행할 명령들
             # 1. 배포할 프로젝트 디렉토리로 이동
-            #    이 디렉토리에는 배포용 docker-compose.yml 파일이 미리 존재해야 합니다.
-            #    로컬 개발용 docker-compose.yml과 다르게, 볼륨 마운트는 제거해야 합니다.
+            #    이 디렉토리에는 배포용 docker-compose.yml 파일 존재 해야함
+            #    로컬 개발용 docker-compose.yml과 다르게, 볼륨 마운트는 제거
             cd /home/${{ secrets.USER }}/barunChuk # EC2의 실제 배포 경로에 맞게 조정
 
             # 2. Docker Hub 로그인 (EC2에서도 이미지 pull을 위해 필요)
